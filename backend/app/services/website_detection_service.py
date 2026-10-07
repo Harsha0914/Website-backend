@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 from typing import Tuple
 from app.models.business import WebsiteStatus
 from app.config import settings
+from app.utils.net_safety import SafeClient, UnsafeURL
 
 # Domains to treat as social media or aggregator platforms (not official dedicated websites)
 SOCIAL_OR_DIRECTORY_DOMAINS = {
@@ -147,8 +148,7 @@ async def detect_website(raw_url: str | None) -> Tuple[WebsiteStatus, str | None
     }
 
     try:
-        async with httpx.AsyncClient(
-            follow_redirects=True,
+        async with SafeClient(
             timeout=settings.WEBSITE_CHECK_TIMEOUT_SECONDS,
             verify=False  # Allow self-signed or testing certs without throwing hard exception
         ) as client:
@@ -164,14 +164,16 @@ async def detect_website(raw_url: str | None) -> Tuple[WebsiteStatus, str | None
             else:
                 return WebsiteStatus.WEBSITE_UNREACHABLE, final_url, https_enabled
 
+    except UnsafeURL:
+        # internal / non-public targets are never fetched and never count as a real website
+        return WebsiteStatus.WEBSITE_UNREACHABLE, None, False
     except httpx.RequestError:
         # Try fallback to http if https failed
         if cleaned_url.startswith("https://"):
             http_fallback = "http://" + cleaned_url[8:]
             try:
-                async with httpx.AsyncClient(
-                    follow_redirects=True,
-                    timeout=settings.WEBSITE_CHECK_TIMEOUT_SECONDS
+                async with SafeClient(
+                            timeout=settings.WEBSITE_CHECK_TIMEOUT_SECONDS
                 ) as client:
                     resp = await client.get(http_fallback, headers=headers)
                     if 200 <= resp.status_code < 400 or resp.status_code in (401, 403):

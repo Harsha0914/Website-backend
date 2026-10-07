@@ -1,3 +1,12 @@
+import os
+
+# Must be set BEFORE the app (and therefore app.config) is imported.
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+os.environ.setdefault("ADMIN_SECRET_CODE", "test-admin-code-123")
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")   # never touch the committed shop.db
+os.environ["MONGODB_URI"] = ""                                 # never reach a real MongoDB in tests
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -86,3 +95,15 @@ def user_token(normal_user):
 @pytest.fixture
 def admin_token(admin_user):
     return create_access_token(admin_user.id)
+
+
+@pytest.fixture(autouse=True)
+def _reset_security_state():
+    """Throttles and OTPs are process-wide: isolate every test."""
+    from app.utils import login_throttle
+    from app.services.email_service import reset_otp_cache
+    login_throttle.reset_all()
+    reset_otp_cache()
+    yield
+    login_throttle.reset_all()
+    reset_otp_cache()

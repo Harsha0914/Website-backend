@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -52,14 +53,12 @@ class MrLadWhatsAppClient:
             return cls._cached_token, None
 
         auth_base = settings.LAD_AUTH_BASE_URL.rstrip("/")
-        email = (settings.LAD_AUTH_EMAIL or "api@lexonit.com").strip().strip('"\'')
+        email = (settings.LAD_AUTH_EMAIL or "").strip().strip('"\'')
         primary_password = (settings.LAD_AUTH_PASSWORD or "").strip().strip('"\'')
+        if not email or not primary_password:
+            return None, "Mr LAD credentials are not configured (set LAD_AUTH_EMAIL and LAD_AUTH_PASSWORD)"
 
-        passwords_to_try = []
-        if primary_password:
-            passwords_to_try.append(primary_password)
-        if "Solution@lit123" not in passwords_to_try:
-            passwords_to_try.append("Solution@lit123")
+        passwords_to_try = [primary_password]
 
         url = f"{auth_base}/api/auth/login"
         last_err = ""
@@ -85,7 +84,7 @@ class MrLadWhatsAppClient:
                     return None, f"Login succeeded but no token in response: {data}"
                 else:
                     err_text = res.text
-                    pwd_hint = f"pwd_len={len(pwd)}, first={pwd[:2]!r}, last={pwd[-2:]!r}" if pwd else "pwd=empty"
+                    pwd_hint = "credentials rejected"
                     logger.warning(f"[Mr LAD API Auth Note {res.status_code}] email={email!r}, {pwd_hint}: {err_text}")
                     last_err = f"Auth failed with HTTP {res.status_code} (email={email!r}, {pwd_hint}): {err_text}"
             except Exception as e:
@@ -98,20 +97,35 @@ class MrLadWhatsAppClient:
     def _find_conversation_id(cls, phone: str, token: str) -> Optional[str]:
         """
         Looks up an existing conversation_id for the given phone number.
-        Returns None if not found.
+        Pages through ALL conversations (not just the first 100) and compares the
+        normalized full number, so two different people never share a thread.
         """
         api_base = settings.LAD_API_BASE_URL.rstrip("/")
         h = {"Authorization": f"Bearer {token}"}
+        target = cls._clean_phone(phone).lstrip("+")
+        page_size, max_pages = 100, 30
         try:
-            r = requests.get(f"{api_base}/api/conversations", headers=h, params={"limit": 100}, timeout=10)
-            if r.status_code != 200:
-                return None
-            convs = r.json().get("data", []) if isinstance(r.json(), dict) else r.json()
-            digits = "".join(c for c in phone if c.isdigit())
-            for c in convs:
-                c_phone = "".join(ch for ch in (c.get("phone") or "") if ch.isdigit())
-                if c_phone and c_phone.endswith(digits[-10:]):
-                    return c["id"]
+            for page in range(max_pages):
+                r = requests.get(
+                    f"{api_base}/api/conversations", headers=h,
+                    params={"limit": page_size, "offset": page * page_size}, timeout=10,
+                )
+                if r.status_code != 200:
+                    return None
+                body = r.json()
+                convs = body.get("data", []) if isinstance(body, dict) else body
+                if not convs:
+                    return None
+                for c in convs:
+                    c_digits = "".join(ch for ch in (c.get("phone") or "") if ch.isdigit())
+                    if not c_digits:
+                        continue
+                    if len(c_digits) == 10:
+                        c_digits = "91" + c_digits
+                    if c_digits == target:
+                        return c["id"]
+                if len(convs) < page_size:
+                    return None
         except Exception:
             pass
         return None
@@ -274,22 +288,35 @@ class MrLadWhatsAppClient:
             return False, str(e), {}
 
     @classmethod
+    def _admin_copy_number(cls) -> Optional[str]:
+        raw = (settings.WHATSAPP_ADMIN_COPY_NUMBER or "").strip()
+        return cls._clean_phone(raw) if raw else None
+
+    @classmethod
+    def _is_admin_copy_number(cls, phone: str) -> bool:
+        admin = cls._admin_copy_number()
+        return bool(admin) and cls._clean_phone(phone) == admin
+
+    @classmethod
     def sync_to_admin(cls, message: str, shop_name: str, shop_phone: str, send_flyer: bool = True):
         """
-        Synchronizes every dispatched pitch and flyer directly to the user's WhatsApp
-        account (+917780181920) so that the chat is instantly updated and visible in
-        the user's WhatsApp desktop/mobile app without any prefix headers.
+        Mirrors a dispatched pitch to the admin WhatsApp account named by
+        WHATSAPP_ADMIN_COPY_NUMBER so the team can see it. Disabled when unset.
         """
-        admin_phone = "+917780181920"
+        admin_phone = cls._admin_copy_number()
+        if not admin_phone:
+            return
         try:
             token, _ = cls.get_token()
             if not token:
                 logger.warning("[Admin WhatsApp Sync] No token available for sync")
                 return
 
-            admin_conv_id = cls._find_conversation_id(admin_phone, token) or "9c8fdb44-e907-41ca-8cec-e80870473f84"
+            admin_conv_id = cls._find_conversation_id(admin_phone, token)
+            if not admin_conv_id:
+                logger.warning("[Admin WhatsApp Sync] No conversation for admin copy number; skipping")
+                return
 
-            # Deliver clean pitch directly without any prefix header
             flyers = cls._resolve_flyer_paths()
             flyer_img = flyers.get("easybillbro")
             if send_flyer and flyer_img:
@@ -301,7 +328,7 @@ class MrLadWhatsAppClient:
                         caption=message
                     )
                     if img_ok:
-                        logger.info(f"[Admin WhatsApp Sync] ✅ Delivered flyer image + pitch to {admin_phone} ({img_id})")
+                        logger.info(f"[Admin WhatsApp Sync] Delivered flyer image + pitch ({img_id})")
                         return
                 except Exception as img_err:
                     logger.warning(f"[Admin WhatsApp Sync Image Note] {img_err}")
@@ -316,7 +343,7 @@ class MrLadWhatsAppClient:
                 timeout=15
             )
             if r.status_code == 200:
-                logger.info(f"[Admin WhatsApp Sync] ✅ Delivered pitch to {admin_phone}")
+                logger.info("[Admin WhatsApp Sync] Delivered pitch copy")
             else:
                 logger.warning(f"[Admin WhatsApp Sync Note {r.status_code}] {r.text[:200]}")
 
@@ -495,7 +522,7 @@ class MrLadWhatsAppClient:
                     )
                     if img_ok:
                         logger.info(f"[Mr LAD API] Successfully dispatched flyer image with description in 1 message to {recipient} ({img_id})")
-                        if sync_admin_copy and not recipient.endswith("7780181920"):
+                        if sync_admin_copy and not cls._is_admin_copy_number(recipient):
                             cls.sync_to_admin(outbound_message, display_name, recipient, send_flyer=send_flyer)
                         return True, img_id, {
                             "success": True,
@@ -509,7 +536,7 @@ class MrLadWhatsAppClient:
                 # If no flyer requested or image failed, send freetext into the thread
                 ft_ok, ft_id, ft_data = _send_freetext(existing_conv_id, outbound_message)
                 if ft_ok:
-                    if sync_admin_copy and not recipient.endswith("7780181920"):
+                    if sync_admin_copy and not cls._is_admin_copy_number(recipient):
                         cls.sync_to_admin(outbound_message, display_name, recipient, send_flyer=send_flyer)
                     return True, ft_id, {
                         "success": True,
@@ -570,7 +597,7 @@ class MrLadWhatsAppClient:
             if not msg_id:
                 msg_id = f"wamid.LAD_{uuid.uuid4().hex[:12]}"
             logger.info(f"[Mr LAD API] Sent fallback template to {recipient} (ID: {msg_id})")
-            if sync_admin_copy and not recipient.endswith("7780181920"):
+            if sync_admin_copy and not cls._is_admin_copy_number(recipient):
                 cls.sync_to_admin(outbound_message, display_name, recipient, send_flyer=send_flyer)
             return True, msg_id, init_data
 
@@ -579,21 +606,19 @@ class MrLadWhatsAppClient:
             return False, str(e), None
 
     @classmethod
-    def get_conversations(cls, limit: int = 50, offset: int = 0) -> Tuple[bool, Any]:
-        """
-        Reads conversation threads: GET {api-base}/api/conversations
-        """
+    def _authed_get(cls, path: str, params: dict) -> Tuple[bool, Any]:
+        """GET with the cached token, refreshing it once on 401/403."""
         token, auth_err = cls.get_token()
         if not token:
             return False, auth_err
-
-        api_base = settings.LAD_API_BASE_URL.rstrip("/")
-        url = f"{api_base}/api/conversations"
-        headers = {"Authorization": f"Bearer {token}"}
-        params = {"limit": limit, "offset": offset}
-
+        url = f"{settings.LAD_API_BASE_URL.rstrip('/')}{path}"
         try:
-            res = requests.get(url, headers=headers, params=params, timeout=15)
+            res = requests.get(url, headers={"Authorization": f"Bearer {token}"}, params=params, timeout=15)
+            if res.status_code in (401, 403):
+                token, auth_err = cls.get_token(force_refresh=True)
+                if not token:
+                    return False, auth_err
+                res = requests.get(url, headers={"Authorization": f"Bearer {token}"}, params=params, timeout=15)
             if res.status_code == 200:
                 return True, res.json()
             return False, f"HTTP {res.status_code}: {res.text}"
@@ -601,115 +626,150 @@ class MrLadWhatsAppClient:
             return False, str(e)
 
     @classmethod
+    def get_conversations(cls, limit: int = 50, offset: int = 0) -> Tuple[bool, Any]:
+        """Reads conversation threads: GET {api-base}/api/conversations"""
+        return cls._authed_get("/api/conversations", {"limit": limit, "offset": offset})
+
+    @classmethod
     def get_messages(cls, conversation_id: str, limit: int = 50) -> Tuple[bool, Any]:
-        """
-        Reads messages in a conversation thread:
-        GET {api-base}/api/conversations/{id}/messages
-        """
-        token, auth_err = cls.get_token()
-        if not token:
-            return False, auth_err
+        """Reads messages in a thread: GET {api-base}/api/conversations/{id}/messages"""
+        return cls._authed_get(f"/api/conversations/{conversation_id}/messages", {"limit": limit})
 
-        api_base = settings.LAD_API_BASE_URL.rstrip("/")
-        url = f"{api_base}/api/conversations/{conversation_id}/messages"
-        headers = {"Authorization": f"Bearer {token}"}
-        params = {"limit": limit}
+    # Per-thread change signature so unchanged threads cost zero extra API calls.
+    _thread_signatures: Dict[str, str] = {}
+    _sync_lock = threading.Lock()
 
-        try:
-            res = requests.get(url, headers=headers, params=params, timeout=15)
-            if res.status_code == 200:
-                return True, res.json()
-            return False, f"HTTP {res.status_code}: {res.text}"
-        except Exception as e:
-            return False, str(e)
+    @staticmethod
+    def _parse_ts(m: Dict[str, Any]) -> Optional[datetime]:
+        """Best-effort UTC timestamp of a gateway message; None when unknown."""
+        for key in ("created_at", "timestamp", "sent_at", "time", "date"):
+            v = m.get(key)
+            if v in (None, ""):
+                continue
+            try:
+                if isinstance(v, (int, float)) or (isinstance(v, str) and v.isdigit()):
+                    n = float(v)
+                    if n > 1e11:  # milliseconds
+                        n /= 1000.0
+                    return datetime.utcfromtimestamp(n)
+                dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+                if dt.tzinfo is not None:
+                    dt = (dt - dt.utcoffset()).replace(tzinfo=None)
+                return dt
+            except Exception:
+                continue
+        return None
 
     @classmethod
     def sync_recent_conversations(cls, db: Session) -> Dict[str, Any]:
         """
-        Polls Mr LAD API for recent conversations and inbound messages,
-        saving any new messages into the database and triggering AI response
-        processing when new incoming messages from shop owners are found.
+        Polls Mr LAD for recent threads and runs every NEW inbound message through the
+        same pipeline as the Meta webhook (classification, opt-out, lead score, AI reply).
+
+        Safety rules:
+          * only the newest inbound message of a thread may trigger an auto-reply, and only
+            if it is recent (WHATSAPP_REPLY_MAX_AGE_MINUTES) and nobody answered it yet;
+          * older / historical messages are stored and classified (so a STOP is always
+            honoured) but never answered;
+          * messages without a usable timestamp are stored but never auto-answered;
+          * overlapping runs (poller + /sync) are serialised by a lock.
         """
-        if settings.WHATSAPP_IS_TEST_MODE or not (settings.LAD_API_TOKEN or settings.LAD_AUTH_PASSWORD):
+        if settings.WHATSAPP_IS_TEST_MODE or not (
+            settings.LAD_API_TOKEN or (settings.LAD_AUTH_EMAIL and settings.LAD_AUTH_PASSWORD)
+        ):
             return {"status": "skipped", "message": "Test mode active or credentials missing"}
 
-        success, conv_data = cls.get_conversations(limit=20)
-        if not success:
-            logger.error(f"[Mr LAD Sync] Failed to fetch conversations: {conv_data}")
-            return {"status": "error", "message": conv_data}
+        if not cls._sync_lock.acquire(blocking=False):
+            return {"status": "skipped", "message": "Sync already running"}
 
-        threads = conv_data.get("data", []) if isinstance(conv_data, dict) else (conv_data if isinstance(conv_data, list) else [])
-        synced_threads = 0
-        new_inbound_messages = 0
+        try:
+            from app.models.whatsapp import WhatsAppMessage
+            from app.services.whatsapp_service import process_incoming_whatsapp_message
 
-        # Import processing functions lazily to prevent circular imports
-        from app.models.whatsapp import WhatsAppConversation, WhatsAppMessage, WhatsAppDirection, WhatsAppSenderType
-        from app.services.whatsapp_service import process_incoming_whatsapp_message
+            success, conv_data = cls.get_conversations(limit=20)
+            if not success:
+                logger.error(f"[Mr LAD Sync] Failed to fetch conversations: {conv_data}")
+                return {"status": "error", "message": str(conv_data)}
 
-        for thread in threads:
-            thread_id = str(thread.get("id") or thread.get("_id") or "")
-            if not thread_id:
-                continue
+            threads = conv_data.get("data", []) if isinstance(conv_data, dict) else (conv_data if isinstance(conv_data, list) else [])
+            synced_threads = new_inbound = replied = 0
+            max_age = timedelta(minutes=int(settings.WHATSAPP_REPLY_MAX_AGE_MINUTES or 15))
+            now = datetime.utcnow()
 
-            customer_phone = thread.get("phone") or thread.get("customer_phone") or thread.get("recipient")
-            if not customer_phone:
-                continue
+            for thread in threads:
+                thread_id = str(thread.get("id") or thread.get("_id") or "")
+                customer_phone = thread.get("phone") or thread.get("customer_phone") or thread.get("recipient")
+                if not thread_id or not customer_phone:
+                    continue
 
-            clean_digits = "".join(c for c in str(customer_phone) if c.isdigit())
-            if len(clean_digits) == 10:
-                clean_digits = "91" + clean_digits
+                sig = thread.get("last_message_at") or thread.get("updated_at") or thread.get("last_message_time")
+                sig = str(sig) if sig else None
+                if sig and cls._thread_signatures.get(thread_id) == sig:
+                    continue  # nothing new in this thread
 
-            # Fetch messages in this thread
-            ok, msgs_data = cls.get_messages(thread_id, limit=20)
-            if not ok:
-                continue
+                clean_digits = "".join(c for c in str(customer_phone) if c.isdigit())
+                if len(clean_digits) == 10:
+                    clean_digits = "91" + clean_digits
 
-            msgs = msgs_data.get("data", []) if isinstance(msgs_data, dict) else (msgs_data if isinstance(msgs_data, list) else [])
-            synced_threads += 1
+                ok, msgs_data = cls.get_messages(thread_id, limit=20)
+                if not ok:
+                    continue
+                msgs = msgs_data.get("data", []) if isinstance(msgs_data, dict) else (msgs_data if isinstance(msgs_data, list) else [])
+                synced_threads += 1
 
-            for m in msgs:
-                msg_id = m.get("id") or m.get("wamid") or m.get("_id") or m.get("external_message_id")
-                role = (m.get("role") or "").lower()
-                direction = (m.get("direction") or "").lower()
-                text = (m.get("content") or m.get("text") or m.get("body") or "").strip()
-                sender_name = m.get("sender_name") or m.get("name") or thread.get("contact_name") or "Shop Owner"
+                inbound, outbound_times = [], []
+                for m in msgs:
+                    role = (m.get("role") or "").lower()
+                    direction = (m.get("direction") or "").lower()
+                    is_in = (role == "user") or direction in ("inbound", "incoming", "in") or m.get("from_customer") is True
+                    ts = cls._parse_ts(m)
+                    if is_in:
+                        text = (m.get("content") or m.get("text") or m.get("body") or "").strip()
+                        msg_id = m.get("id") or m.get("wamid") or m.get("_id") or m.get("external_message_id")
+                        if text and msg_id:
+                            inbound.append((ts, str(msg_id), text, m))
+                    elif ts:
+                        outbound_times.append(ts)
 
-                # Check if it's inbound (from customer to LexonIT)
-                is_inbound = (role == "user") or direction in ("inbound", "incoming", "in") or m.get("from_customer") is True
+                inbound.sort(key=lambda x: (x[0] is not None, x[0] or datetime.min))
+                newest = inbound[-1] if inbound else None
 
-                if is_inbound and text and msg_id:
-                    # Check if already processed
-                    existing = db.query(WhatsAppMessage).filter(
-                        WhatsAppMessage.external_message_id == str(msg_id)
-                    ).first()
+                for ts, msg_id, text, m in inbound:
+                    already = db.query(WhatsAppMessage.id).filter(WhatsAppMessage.external_message_id == msg_id).first()
+                    if already:
+                        continue
+                    new_inbound += 1
+                    is_target = (
+                        newest is not None and msg_id == newest[1]
+                        and ts is not None
+                        and (now - ts) <= max_age
+                        and not any(o >= ts for o in outbound_times)
+                    )
+                    sender_name = m.get("sender_name") or m.get("name") or thread.get("contact_name") or "Shop Owner"
+                    try:
+                        _, out_msg, _ = process_incoming_whatsapp_message(
+                            db=db,
+                            phone_number=clean_digits,
+                            message_text=text,
+                            sender_name=sender_name,
+                            shop_name=thread.get("company") or None,
+                            external_message_id=msg_id,
+                            allow_reply=is_target,
+                        )
+                        if out_msg is not None:
+                            replied += 1
+                    except Exception as proc_err:
+                        db.rollback()
+                        logger.error(f"[Mr LAD Sync] Error processing message {msg_id}: {proc_err}")
 
-                    if not existing:
-                        logger.info(f"[Mr LAD Sync] Synced message {msg_id} from {clean_digits}: {text[:30]}")
-                        new_inbound_messages += 1
+                if sig:
+                    cls._thread_signatures[thread_id] = sig
 
-                        try:
-                            from app.services.whatsapp_service import get_or_create_whatsapp_conversation
-                            conv = get_or_create_whatsapp_conversation(db=db, phone_number=clean_digits, shop_name=sender_name)
-                            
-                            hist_msg = WhatsAppMessage(
-                                conversation_id=conv.id,
-                                direction=WhatsAppDirection.INBOUND,
-                                sender_type=WhatsAppSenderType.CUSTOMER,
-                                sender_name=sender_name,
-                                message_body=text,
-                                status="received",
-                                is_read=True,
-                                external_message_id=str(msg_id),
-                                created_at=datetime.utcnow(),
-                            )
-                            db.add(hist_msg)
-                            conv.last_message_at = datetime.utcnow()
-                            db.commit()
-                        except Exception as proc_err:
-                            logger.error(f"[Mr LAD Sync] Error syncing message: {proc_err}")
-
-        return {
-            "status": "success",
-            "synced_threads": synced_threads,
-            "new_inbound_messages": new_inbound_messages,
-        }
+            return {
+                "status": "success",
+                "synced_threads": synced_threads,
+                "new_inbound_messages": new_inbound,
+                "ai_replies_sent": replied,
+            }
+        finally:
+            cls._sync_lock.release()

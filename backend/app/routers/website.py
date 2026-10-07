@@ -53,7 +53,11 @@ def get_my_website_requests(
     )
 
 @router.get("/{business_id}", response_model=WebsiteAnalysisOut)
-def get_website_analysis(business_id: int, db: Session = Depends(get_db)):
+def get_website_analysis(
+    business_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     wa = db.query(WebsiteAnalysis).filter(WebsiteAnalysis.business_id == business_id).first()
     if not wa:
         biz = db.query(Business).filter(Business.id == business_id).first()

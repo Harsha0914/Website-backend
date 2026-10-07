@@ -318,7 +318,7 @@ class WhatsAppApiSettings(Base):
     business_account_id = Column(String(100), nullable=True)
     phone_number_id = Column(String(100), nullable=True)
     access_token = Column(Text, nullable=True)
-    webhook_verify_token = Column(String(100), default="shoppresence_whatsapp_webhook_token_123", nullable=False)
+    webhook_verify_token = Column(String(100), default="", nullable=False)
     api_version = Column(String(20), default="v21.0", nullable=False)
     is_test_mode = Column(Boolean, default=True, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

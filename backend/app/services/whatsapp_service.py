@@ -45,6 +45,13 @@ from app.services.ai_sales_agent import (
 # IMPORTANT:
 # Real Meta WhatsApp Cloud API client
 from app.services.whatsapp_cloud_client import WhatsAppCloudClient
+from app.services.whatsapp_guard import (
+    OPT_OUT_CONFIRMATION,
+    SendBlocked,
+    can_message,
+    delivery_status,
+    phone_key,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -407,6 +414,62 @@ def get_or_create_whatsapp_conversation(
 # PROCESS INCOMING WHATSAPP MESSAGE
 # ─────────────────────────────────────────────────────────────────────────────
 
+_RESUBSCRIBE_WORDS = {"start", "subscribe", "unstop", "resume", "yes start"}
+
+
+def _link_business_by_phone(db: Session, conv: WhatsAppConversation) -> Optional[Business]:
+    """Attach an inbound conversation to the scraped Business that owns the number."""
+    key = phone_key(conv.phone_number)
+    if len(key) < 10:
+        return None
+    candidates = (
+        db.query(Business)
+        .filter(Business.phone.isnot(None), Business.phone.like(f"%{key[-3:]}%"))
+        .limit(300)
+        .all()
+    )
+    for biz in candidates:
+        if phone_key(biz.phone) == key:
+            conv.business_id = biz.id
+            return biz
+    return None
+
+
+def _record_outbound(
+    db: Session,
+    conv: WhatsAppConversation,
+    text: str,
+    status: str,
+    *,
+    sender_type: WhatsAppSenderType = WhatsAppSenderType.AI_BOT,
+    sender_name: str = "Lexon IT AI Assistant",
+    ai_generated: bool = True,
+    intent: Optional[str] = None,
+    confidence: Optional[float] = None,
+    external_message_id: Optional[str] = None,
+) -> WhatsAppMessage:
+    msg = WhatsAppMessage(
+        conversation_id=conv.id,
+        direction=WhatsAppDirection.OUTBOUND,
+        sender_type=sender_type,
+        sender_name=sender_name,
+        message_body=text,
+        intent=intent,
+        confidence_score=confidence,
+        ai_generated=ai_generated,
+        tokens_used=len(text.split()),
+        status=status,
+        is_read=True,
+        external_message_id=external_message_id,
+        created_at=datetime.utcnow(),
+    )
+    db.add(msg)
+    conv.last_message_at = datetime.utcnow()
+    db.commit()
+    db.refresh(msg)
+    return msg
+
+
 def process_incoming_whatsapp_message(
     db: Session,
     phone_number: str,
@@ -414,6 +477,10 @@ def process_incoming_whatsapp_message(
     sender_name: str = "Shop Owner",
     business_id: Optional[int] = None,
     shop_name: Optional[str] = None,
+    external_message_id: Optional[str] = None,
+    allow_reply: bool = True,
+    dry_run: bool = False,
+    message_type: str = "text",
 ) -> Tuple[
     WhatsAppMessage,
     Optional[WhatsAppMessage],
@@ -422,384 +489,265 @@ def process_incoming_whatsapp_message(
     """
     Complete WhatsApp AI conversation flow.
 
-    Flow:
+    1. De-duplicate by provider message id (webhook retries / poller overlap)
+    2. Find/create conversation, link it to the scraped business
+    3. Classify intent + sentiment, save the inbound message
+    4. Apply opt-out / re-subscribe, update lead score
+    5. Decide whether the bot may answer (human takeover, caps, opt-out, send gate)
+    6. Generate, vet and SEND the reply; record its TRUE delivery status
 
-    1. Receive WhatsApp message from shop owner
-    2. Find/create conversation using phone number
-    3. Save incoming message
-    4. Classify intent and sentiment
-    5. Update lead score/status
-    6. Extract requirements
-    7. Check whether AI should reply
-    8. Generate AI response
-    9. SEND AI RESPONSE THROUGH REAL META WHATSAPP CLOUD API
-    10. Save AI response in database
-    11. Log AI activity
+    allow_reply=False  -> classify and store only (used for historical / stale messages).
+    dry_run=True       -> run the whole pipeline but never touch the real WhatsApp API
+                          (used by the simulate endpoints).
     """
-
     start_time = time.time()
 
-    biz_name = shop_name or "Local Shop"
-
-    biz = None
-
-    if business_id:
-        biz = (
-            db.query(Business)
-            .filter(Business.id == business_id)
+    # 1. Idempotency
+    if external_message_id:
+        dup = (
+            db.query(WhatsAppMessage)
+            .filter(WhatsAppMessage.external_message_id == str(external_message_id))
             .first()
         )
+        if dup:
+            return dup, None, False
 
+    biz_name = shop_name or "Local Shop"
+    biz = None
+    if business_id:
+        biz = db.query(Business).filter(Business.id == business_id).first()
         if biz:
             biz_name = biz.name
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Get/create conversation
-    # ─────────────────────────────────────────────────────────────────────
-
+    # 2. Conversation
     conv = get_or_create_whatsapp_conversation(
         db=db,
         phone_number=phone_number,
         shop_name=biz_name,
         business_id=business_id,
     )
-
     if not biz and conv.business_id:
-        biz = (
-            db.query(Business)
-            .filter(Business.id == conv.business_id)
-            .first()
-        )
+        biz = db.query(Business).filter(Business.id == conv.business_id).first()
+    if not biz and not conv.business_id:
+        biz = _link_business_by_phone(db, conv)
 
-    # ─────────────────────────────────────────────────────────────────────
-    # 1. Intent & Sentiment Classification
-    # ─────────────────────────────────────────────────────────────────────
+    was_opted_out = bool(conv.opt_out)
+    was_human_takeover = bool(conv.human_takeover)
+    display_sender = sender_name or conv.shop_name or "Shop Owner"
 
-    intent, confidence, sentiment, score_delta = (
-        classify_intent_and_sentiment(
-            message_text=message_text,
-            previous_intent=conv.detected_intent,
+    # Non-text (image / voice / location ...): we cannot understand it, so flag a human.
+    if message_type != "text":
+        media_msg = WhatsAppMessage(
+            conversation_id=conv.id,
+            direction=WhatsAppDirection.INBOUND,
+            sender_type=WhatsAppSenderType.CUSTOMER,
+            sender_name=display_sender,
+            message_body=f"[{message_type} message received - please review in WhatsApp]",
+            status="received",
+            is_read=False,
+            external_message_id=str(external_message_id) if external_message_id else None,
+            created_at=datetime.utcnow(),
         )
+        db.add(media_msg)
+        conv.last_message_at = datetime.utcnow()
+        conv.unread_count = (conv.unread_count or 0) + 1
+        if not conv.opt_out:
+            conv.conversation_status = "HUMAN_HANDOFF"
+            conv.human_takeover = True
+            conv.priority = "HIGH"
+        db.commit()
+        db.refresh(media_msg)
+        return media_msg, None, False
+
+    # 3. Classify + store inbound
+    intent, confidence, sentiment, score_delta = classify_intent_and_sentiment(
+        message_text=message_text,
+        previous_intent=conv.detected_intent,
     )
-
-    # ─────────────────────────────────────────────────────────────────────
-    # 2. Save INBOUND message
-    # ─────────────────────────────────────────────────────────────────────
 
     inbound_msg = WhatsAppMessage(
         conversation_id=conv.id,
-
         direction=WhatsAppDirection.INBOUND,
-
         sender_type=WhatsAppSenderType.CUSTOMER,
-
-        sender_name=(
-            sender_name
-            or conv.shop_name
-            or "Shop Owner"
-        ),
-
+        sender_name=display_sender,
         message_body=message_text,
-
         intent=intent.value,
-
         confidence_score=confidence,
-
         status="received",
-
         is_read=False,
-
+        external_message_id=str(external_message_id) if external_message_id else None,
         created_at=datetime.utcnow(),
     )
-
     db.add(inbound_msg)
-
     conv.last_message_at = datetime.utcnow()
-
-    conv.unread_count = (
-        conv.unread_count or 0
-    ) + 1
-
+    conv.unread_count = (conv.unread_count or 0) + 1
     conv.detected_intent = intent.value
-
     conv.sentiment = sentiment
 
-    # ─────────────────────────────────────────────────────────────────────
-    # 3. Check opt-out
-    # ─────────────────────────────────────────────────────────────────────
-
+    # 4a. Opt-out / re-subscribe
+    just_opted_out = False
+    bare_text = re.sub(r"[^\w\s]", "", (message_text or "").lower()).strip()
     if intent == AIIntent.STOP_CONTACT:
-
+        just_opted_out = not was_opted_out
         conv.opt_out = True
-
-        conv.lead_status = (
-            LeadStatus.DO_NOT_CONTACT.value
-        )
-
+        conv.lead_status = LeadStatus.DO_NOT_CONTACT.value
         conv.auto_ai_enabled = False
-
         conv.conversation_status = "RESOLVED"
+    elif conv.opt_out and bare_text in _RESUBSCRIBE_WORDS:
+        conv.opt_out = False
+        conv.auto_ai_enabled = True
+        conv.human_takeover = False
+        conv.conversation_status = "AI_ACTIVE"
 
-    # ─────────────────────────────────────────────────────────────────────
-    # 4. Update lead score/status
-    # ─────────────────────────────────────────────────────────────────────
-
-    (
-        updated_score,
-        new_lead_status,
-        priority,
-        conv_status,
-    ) = calculate_lead_score_and_status(
+    # 4b. Lead score / status
+    updated_score, new_lead_status, priority, conv_status = calculate_lead_score_and_status(
         current_score=conv.lead_score or 20,
         intent=intent,
         sentiment=sentiment,
         business=biz,
     )
-
     conv.lead_score = updated_score
-
     conv.lead_status = new_lead_status.value
-
     conv.priority = priority
-
-    if conv_status == "HUMAN_HANDOFF":
-
+    if conv.opt_out:
+        # an opted-out number can never drift back into an active lead state
+        conv.lead_status = LeadStatus.DO_NOT_CONTACT.value
+        conv.conversation_status = "RESOLVED"
+    elif conv_status == "HUMAN_HANDOFF":
         conv.conversation_status = "HUMAN_HANDOFF"
-
         conv.human_takeover = True
 
-    # ─────────────────────────────────────────────────────────────────────
-    # 5. Extract business requirements
-    # ─────────────────────────────────────────────────────────────────────
-
-    biz_category = (
-        biz.category
-        if biz
-        else "Local Business"
-    )
-
+    # 4c. Requirements extraction
+    biz_category = biz.category if biz else "Local Business"
     updated_details = extract_business_details(
         conv.business_details_extracted,
         message_text,
         biz_category,
     )
-
-    conv.business_details_extracted = json.dumps(
-        updated_details
-    )
+    conv.business_details_extracted = json.dumps(updated_details)
 
     db.commit()
-
     db.refresh(inbound_msg)
 
-    # ─────────────────────────────────────────────────────────────────────
-    # 6. Check AI settings
-    # ─────────────────────────────────────────────────────────────────────
-
-    ai_cfg = get_ai_settings(db)
-
-    if (
-        not ai_cfg.ai_enabled
-        or not ai_cfg.ai_auto_reply_enabled
-    ):
+    if not allow_reply:
         return inbound_msg, None, False
 
-    if intent == AIIntent.GREETING:
-        conv.human_takeover = False
-        conv.conversation_status = "AI_ACTIVE"
-
-    # AI disabled for this conversation
-    if (
-        not conv.auto_ai_enabled
-        or (conv.human_takeover and intent == AIIntent.HUMAN_REQUEST)
-        or conv.opt_out
-    ):
-        return inbound_msg, None, False
-
-    # ─────────────────────────────────────────────────────────────────────
-    # 7. Generate AI response
-    # ─────────────────────────────────────────────────────────────────────
-
-    reply_text, is_handoff, handoff_reason = (
-        generate_ai_sales_response(
-            db=db,
-            conversation=conv,
-            incoming_message=message_text,
-            intent=intent,
-            sentiment=sentiment,
-            business=biz,
+    # Courtesy confirmation for a fresh STOP (the only message an opted-out number may get)
+    if just_opted_out:
+        ok, raw_err, raw = True, None, {"mode": "simulator"}
+        if not dry_run:
+            ok, raw_err, raw = WhatsAppCloudClient.send_text(
+                db=db, to_phone=conv.phone_number, text_body=OPT_OUT_CONFIRMATION, preview_url=False,
+                enforce_gate=False,
+            )
+        confirm = _record_outbound(
+            db, conv, OPT_OUT_CONFIRMATION, delivery_status(ok, raw),
+            intent=intent.value, confidence=confidence,
         )
-    )
+        return inbound_msg, confirm, bool(ok)
 
-    latency = int(
-        (time.time() - start_time) * 1000
-    )
+    # 5. May the bot answer?
+    ai_cfg = get_ai_settings(db)
+    if not ai_cfg.ai_enabled or not ai_cfg.ai_auto_reply_enabled:
+        return inbound_msg, None, False
 
-    # ─────────────────────────────────────────────────────────────────────
-    # 8. Human handoff
-    # ─────────────────────────────────────────────────────────────────────
+    # A human owns the thread (set BEFORE this message): the bot stays silent.
+    if was_human_takeover:
+        return inbound_msg, None, False
+
+    if not conv.auto_ai_enabled or conv.opt_out:
+        return inbound_msg, None, False
+
+    # Hard cap on bot messages per conversation (prevents bot-to-bot / runaway loops)
+    ai_sent = (
+        db.query(WhatsAppMessage)
+        .filter(
+            WhatsAppMessage.conversation_id == conv.id,
+            WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
+            WhatsAppMessage.ai_generated.is_(True),
+            WhatsAppMessage.status.in_(("sent", "simulated")),
+        )
+        .count()
+    )
+    max_ai = ai_cfg.max_ai_messages_per_conv or 0
+    if max_ai and ai_sent >= max_ai:
+        conv.conversation_status = "HUMAN_HANDOFF"
+        conv.human_takeover = True
+        db.commit()
+        return inbound_msg, None, False
+
+    # Single send gate: valid number, not opted out, daily cap
+    if not dry_run:
+        allowed, _reason = can_message(db, conv.phone_number)
+        if not allowed:
+            return inbound_msg, None, False
+
+    # 6. Generate reply
+    reply_text, is_handoff, handoff_reason = generate_ai_sales_response(
+        db=db,
+        conversation=conv,
+        incoming_message=message_text,
+        intent=intent,
+        sentiment=sentiment,
+        business=biz,
+        confidence=confidence,
+    )
+    latency = int((time.time() - start_time) * 1000)
 
     if is_handoff:
-
         conv.conversation_status = "HUMAN_HANDOFF"
-
         conv.human_takeover = True
+        conv.lead_status = LeadStatus.HUMAN_HANDOFF.value
 
-        conv.lead_status = (
-            LeadStatus.HUMAN_HANDOFF.value
-        )
-
-    # ─────────────────────────────────────────────────────────────────────
-    # 9. SEND AI RESPONSE TO REAL WHATSAPP
-    # ─────────────────────────────────────────────────────────────────────
-
-    whatsapp_sent = False
-
-    whatsapp_message_id = None
-
-    whatsapp_error = None
-
-    whatsapp_response = None
-
-    try:
-
-        whatsapp_sent, whatsapp_result, whatsapp_response = (
-            WhatsAppCloudClient.send_text(
+    # 7. Send
+    whatsapp_sent, whatsapp_error, whatsapp_response = False, None, None
+    if dry_run:
+        whatsapp_sent, whatsapp_response = True, {"mode": "simulator"}
+    else:
+        try:
+            whatsapp_sent, whatsapp_result, whatsapp_response = WhatsAppCloudClient.send_text(
                 db=db,
-                to_phone=phone_number,
+                to_phone=conv.phone_number,
                 text_body=reply_text,
                 preview_url=True,
             )
-        )
+            if not whatsapp_sent:
+                whatsapp_error = whatsapp_result
+                print(f"[WhatsApp AI] Failed to send message to {conv.phone_number}: {whatsapp_error}")
+        except Exception as e:
+            whatsapp_error = str(e)
+            print(f"[WhatsApp AI] Exception while sending message to {conv.phone_number}: {e}")
 
-        if whatsapp_sent:
+    status = delivery_status(whatsapp_sent, whatsapp_response)
 
-            whatsapp_message_id = whatsapp_result
-
-            print(
-                f"[WhatsApp AI] Message sent successfully "
-                f"to {phone_number}"
-            )
-
-            print(
-                f"[WhatsApp AI] Message ID: "
-                f"{whatsapp_message_id}"
-            )
-
-
-
-        else:
-
-            whatsapp_error = whatsapp_result
-
-            print(
-                f"[WhatsApp AI] Failed to send message "
-                f"to {phone_number}: {whatsapp_error}"
-            )
-
-    except Exception as e:
-
-        whatsapp_error = str(e)
-
-        print(
-            f"[WhatsApp AI] Exception while sending "
-            f"message to {phone_number}: {e}"
-        )
-
-    # ─────────────────────────────────────────────────────────────────────
-    # 10. Save OUTBOUND AI reply
-    # ─────────────────────────────────────────────────────────────────────
-
-    outbound_msg = WhatsAppMessage(
-        conversation_id=conv.id,
-
-        direction=WhatsAppDirection.OUTBOUND,
-
-        sender_type=WhatsAppSenderType.AI_BOT,
-
-        sender_name=(
-            f"{ai_cfg.ai_tone.title()} AI Assistant"
-        ),
-
-        message_body=reply_text,
-
-        intent=intent.value,
-
-        confidence_score=confidence,
-
-        ai_generated=True,
-
-        tokens_used=len(
-            reply_text.split()
-        ),
-
-        # Status is marked sent for generated AI responses
-        status="sent",
-
-        is_read=True,
-
-        created_at=datetime.utcnow(),
+    # 8. Record the reply with its TRUE status
+    outbound_msg = _record_outbound(
+        db, conv, reply_text, status,
+        sender_name=f"{ai_cfg.ai_tone.title()} AI Assistant",
+        intent=intent.value, confidence=confidence,
     )
 
-    db.add(outbound_msg)
-
-    conv.last_message_at = datetime.utcnow()
-
-    db.commit()
-
-    db.refresh(outbound_msg)
-
-    # ─────────────────────────────────────────────────────────────────────
-    # 11. AI audit log
-    # ─────────────────────────────────────────────────────────────────────
-
-    log_entry = AIMessageLog(
+    # 9. AI audit log
+    db.add(AIMessageLog(
         conversation_id=conv.id,
-
         incoming_message_id=inbound_msg.id,
-
         incoming_text=message_text,
-
         ai_response_text=reply_text,
-
         model_used="gpt-4o-mini",
-
         intent=intent.value,
-
         confidence=confidence,
-
         sentiment=sentiment,
-
-        tokens_used=len(
-            reply_text.split()
-        ),
-
+        tokens_used=len(reply_text.split()),
         latency_ms=latency,
-
-        was_sent=True,
-
+        was_sent=(status == "sent"),
         is_human_override=False,
-
         triggered_handoff=is_handoff,
-
-        handoff_reason=handoff_reason,
-
+        handoff_reason=handoff_reason or (f"send failed: {whatsapp_error}" if whatsapp_error else None),
         created_at=datetime.utcnow(),
-    )
-
-    db.add(log_entry)
-
+    ))
     db.commit()
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Return result
-    # ─────────────────────────────────────────────────────────────────────
-
-    return (
-        inbound_msg,
-        outbound_msg,
-        True,
-    )
+    return inbound_msg, outbound_msg, bool(whatsapp_sent)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -832,17 +780,24 @@ def send_manual_operator_message(
             f"{conversation_id} not found"
         )
 
+    # Same gate as every other send path: opt-out, valid number, daily cap.
+    allowed, block_reason = can_message(db, conv.phone_number)
+    if not allowed:
+        raise SendBlocked(block_reason or "blocked")
+
     # ─────────────────────────────────────────────────────────────────────
-    # Send through Meta WhatsApp Cloud API
+    # Send through the configured WhatsApp provider
     # ─────────────────────────────────────────────────────────────────────
 
     whatsapp_sent = False
 
     whatsapp_message_id = None
 
+    send_raw = None
+
     try:
 
-        whatsapp_sent, whatsapp_result, _ = (
+        whatsapp_sent, whatsapp_result, send_raw = (
             WhatsAppCloudClient.send_text(
                 db=db,
                 to_phone=conv.phone_number,
@@ -893,11 +848,7 @@ def send_manual_operator_message(
 
         ai_generated=False,
 
-        status=(
-            "sent"
-            if whatsapp_sent
-            else "failed"
-        ),
+        status=delivery_status(whatsapp_sent, send_raw),
 
         is_read=True,
 

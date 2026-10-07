@@ -15,9 +15,13 @@ from app.services.website_detection_service import detect_website, discover_bran
 from app.services.website_analysis_service import analyze_website
 from app.services.distance_service import haversine_km
 from app.services.large_radius_search import search_large_area
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_admin
 
-router = APIRouter(prefix="/api/businesses", tags=["Businesses"])
+router = APIRouter(
+    prefix="/api/businesses",
+    tags=["Businesses"],
+    dependencies=[Depends(get_current_user)],  # every business endpoint needs a logged-in user (it spends paid API quota)
+)
 
 async def background_website_sync(business_id: int, website_url: Optional[str]):
     db = SessionLocal()
@@ -562,32 +566,23 @@ from app.config import settings
 class GoogleKeyRequest(BaseModel):
     api_key: str
 
-@router.get("/config/google-key-status")
+@router.get("/config/google-key-status", dependencies=[Depends(require_admin)])
 def get_google_key_status():
     has_key = bool(settings.GOOGLE_PLACES_API_KEY and settings.GOOGLE_PLACES_API_KEY.strip())
-    masked = ""
-    if has_key:
-        k = settings.GOOGLE_PLACES_API_KEY.strip()
-        masked = k[:6] + "..." + k[-4:] if len(k) > 10 else "***"
+    masked = ("..." + settings.GOOGLE_PLACES_API_KEY.strip()[-4:]) if has_key else ""
     return {"connected": has_key, "masked_key": masked}
 
-@router.post("/config/google-key")
+@router.post("/config/google-key", dependencies=[Depends(require_admin)])
 def update_google_key(req: GoogleKeyRequest):
+    """
+    Admin only. Updates the key for the running process; it is NOT written to disk.
+    Persist it as the GOOGLE_PLACES_API_KEY environment variable on the host.
+    """
+    import re
     new_key = req.api_key.strip()
+    if new_key and not re.fullmatch(r"[A-Za-z0-9_\-]{20,100}", new_key):
+        raise HTTPException(status_code=400, detail="That does not look like a valid API key.")
     settings.GOOGLE_PLACES_API_KEY = new_key
-    env_path = r"c:\Shop\backend\.env"
-    try:
-        with open(env_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        import re
-        if re.search(r"^GOOGLE_PLACES_API_KEY=.*$", content, re.MULTILINE):
-            content = re.sub(r"^GOOGLE_PLACES_API_KEY=.*$", f"GOOGLE_PLACES_API_KEY={new_key}", content, flags=re.MULTILINE)
-        else:
-            content += f"\nGOOGLE_PLACES_API_KEY={new_key}\n"
-        with open(env_path, "w", encoding="utf-8") as f:
-            f.write(content)
-    except Exception as ex:
-        print("Failed writing to .env:", ex)
     return {"status": "success", "connected": bool(new_key)}
 
 @router.get("/{business_id}", response_model=BusinessOut)

@@ -6,7 +6,7 @@ import api, { getBaseUrl } from '../../services/api';
 import MobileBottomNav from '../../components/layout/MobileBottomNav';
 
 export default function LoginPage() {
-  const { login, resetPassword, loading, error, isAuthenticated, user } = useAuthStore();
+  const { login, sendPasswordOtp, verifyOtpAndResetPassword, loading, error, isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -19,9 +19,9 @@ export default function LoginPage() {
 
   // Forgot password state
   const [resetEmail, setResetEmail] = useState('');
-  const [resetOldPass, setResetOldPass] = useState('');
+  const [resetOtp, setResetOtp] = useState('');
+  const [resetStep, setResetStep] = useState('request'); // 'request' -> 'verify'
   const [resetNewPass, setResetNewPass] = useState('');
-  const [showOldPass, setShowOldPass] = useState(false);
   const [showResetPass, setShowResetPass] = useState(false);
   const [resetError, setResetError] = useState('');
   const [resetSuccess, setResetSuccess] = useState('');
@@ -40,14 +40,15 @@ export default function LoginPage() {
 
   const openForgotModal = () => {
     setResetEmail(username || '');
-    setResetOldPass('');
+    setResetOtp('');
+    setResetStep('request');
     setResetNewPass('');
     setResetError('');
     setResetSuccess('');
     setShowForgotModal(true);
   };
 
-  const handleDirectResetPassword = async (e) => {
+  const handleRequestOtp = async (e) => {
     e.preventDefault();
     setResetError('');
     setResetSuccess('');
@@ -56,28 +57,55 @@ export default function LoginPage() {
       setResetError('Please enter a valid email address.');
       return;
     }
-    if (!resetNewPass || resetNewPass.length < 6) {
-      setResetError('New password must be at least 6 characters long.');
+
+    setResetLoading(true);
+    try {
+      const res = await sendPasswordOtp(resetEmail);
+      setResetSuccess(res.message || 'If an account exists for this email, a verification code has been sent.');
+      setResetStep('verify');
+    } catch (err) {
+      setResetError(err.message || 'Failed to send the verification code.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleVerifyAndReset = async (e) => {
+    e.preventDefault();
+    setResetError('');
+    setResetSuccess('');
+
+    if (!/^\d{4,8}$/.test(resetOtp.trim())) {
+      setResetError('Enter the 4-8 digit code from your email.');
+      return;
+    }
+    if (
+      resetNewPass.length < 8 ||
+      !/[A-Z]/.test(resetNewPass) ||
+      !/[a-z]/.test(resetNewPass) ||
+      !/\d/.test(resetNewPass)
+    ) {
+      setResetError('New password needs 8+ characters with an uppercase letter, a lowercase letter and a number.');
       return;
     }
 
     setResetLoading(true);
     try {
-      const res = await resetPassword({
+      const res = await verifyOtpAndResetPassword({
         email: resetEmail,
-        old_password: resetOldPass || undefined,
+        otp: resetOtp,
         new_password: resetNewPass,
         confirm_password: resetNewPass,
       });
       setResetSuccess(res.message || 'Password updated successfully! You can now log in.');
       setUsername(resetEmail);
-      setPassword(resetNewPass);
+      setPassword('');
       setTimeout(() => {
         setShowForgotModal(false);
         setResetSuccess('');
       }, 1400);
     } catch (err) {
-      setResetError(err.message || 'Failed to reset password. Please verify the email.');
+      setResetError(err.message || 'Failed to reset password.');
     } finally {
       setResetLoading(false);
     }
@@ -292,7 +320,7 @@ export default function LoginPage() {
                 </div>
                 <div>
                   <h3 className="text-slate-900 dark:text-white font-black text-lg tracking-tight">Reset Password</h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Update your account credentials</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">We will e-mail you a one-time code</p>
                 </div>
               </div>
               <button
@@ -324,8 +352,8 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Reset Password Form matching Image 2 */}
-            <form onSubmit={handleDirectResetPassword} className="space-y-4">
+            {/* Reset Password: e-mail a one-time code, then set a new password */}
+            <form onSubmit={resetStep === 'request' ? handleRequestOtp : handleVerifyAndReset} className="space-y-4">
               {/* Email Address */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -336,60 +364,59 @@ export default function LoginPage() {
                   <input
                     type="email"
                     required
+                    disabled={resetStep === 'verify'}
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
                     placeholder="name@example.com"
-                    className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500/20 focus:border-[#d92672] transition-all"
+                    className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500/20 focus:border-[#d92672] transition-all disabled:opacity-60"
                   />
                 </div>
               </div>
 
-              {/* Old password */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Old password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showOldPass ? 'text' : 'password'}
-                    value={resetOldPass}
-                    onChange={(e) => setResetOldPass(e.target.value)}
-                    placeholder="Enter old password (optional if forgotten)"
-                    className="w-full px-3.5 pr-10 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500/20 focus:border-[#d92672] transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowOldPass(!showOldPass)}
-                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  >
-                    {showOldPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
+              {resetStep === 'verify' && (
+                <>
+                  {/* One-time code */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Verification code
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      required
+                      value={resetOtp}
+                      onChange={(e) => setResetOtp(e.target.value)}
+                      placeholder="6-digit code from your email"
+                      className="w-full px-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500/20 focus:border-[#d92672] transition-all tracking-widest"
+                    />
+                  </div>
 
-              {/* New password */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  New password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showResetPass ? 'text' : 'password'}
-                    required
-                    value={resetNewPass}
-                    onChange={(e) => setResetNewPass(e.target.value)}
-                    placeholder="Enter new password (min 6 chars)"
-                    className="w-full px-3.5 pr-10 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500/20 focus:border-[#d92672] transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowResetPass(!showResetPass)}
-                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  >
-                    {showResetPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
+                  {/* New password */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      New password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showResetPass ? 'text' : 'password'}
+                        required
+                        value={resetNewPass}
+                        onChange={(e) => setResetNewPass(e.target.value)}
+                        placeholder="8+ chars, upper, lower and a number"
+                        className="w-full px-3.5 pr-10 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500/20 focus:border-[#d92672] transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowResetPass(!showResetPass)}
+                        className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        {showResetPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Action Buttons */}
               <div className="pt-2 space-y-2.5">
@@ -401,10 +428,10 @@ export default function LoginPage() {
                   {resetLoading ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
-                      <span>Updating password...</span>
+                      <span>Please wait...</span>
                     </>
                   ) : (
-                    <span>Reset password</span>
+                    <span>{resetStep === 'request' ? 'Send verification code' : 'Reset password'}</span>
                   )}
                 </button>
 

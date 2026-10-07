@@ -18,6 +18,18 @@ from app.auth.dependencies import require_admin
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"], dependencies=[Depends(require_admin)])
 
+def _guard_last_admin(db: Session, user: User, req: Optional[AdminUserUpdate]) -> None:
+    """Never allow the last active admin to be removed, demoted or deactivated."""
+    if user.role != UserRole.ADMIN or not user.is_active:
+        return
+    removing = req is None or req.is_active is False or (req.role is not None and req.role != UserRole.ADMIN)
+    if not removing:
+        return
+    others = db.query(User).filter(User.role == UserRole.ADMIN, User.is_active.is_(True), User.id != user.id).count()
+    if others == 0:
+        raise HTTPException(status_code=400, detail="At least one active administrator must remain.")
+
+
 @router.get("/statistics")
 def get_statistics(db: Session = Depends(get_db)):
     total_users = db.query(User).count()
@@ -119,11 +131,18 @@ def get_all_users(
 def update_user_status(
     user_id: int,
     req: AdminUserUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # An admin can neither lock themselves out nor demote themselves (avoids orphaned systems).
+    if user.id == admin.id and (
+        req.is_active is False or (req.role is not None and req.role != UserRole.ADMIN)
+    ):
+        raise HTTPException(status_code=400, detail="You cannot deactivate or demote your own account.")
+    _guard_last_admin(db, user, req)
     if req.full_name is not None:
         user.full_name = req.full_name
     if req.phone is not None:
@@ -153,10 +172,13 @@ def update_user_status(
     return user
 
 @router.delete("/users/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+    _guard_last_admin(db, user, None)
     user_email = user.email
     db.delete(user)
     db.commit()

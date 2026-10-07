@@ -196,7 +196,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
                   Successfully initiated AI website outreach messages to{' '}
-                  <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{sendResult?.total_sent || targetShops.length} shops</strong>.
+                  <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{sendResult?.total_sent ?? 0} shops</strong>.
                   The AI Sales Bot will automatically handle all incoming replies!
                 </p>
               </div>
@@ -209,7 +209,11 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                 </div>
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-slate-600 dark:text-slate-300">Outreach Delivered:</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">{sendResult?.total_sent || targetShops.length}</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">{sendResult?.total_sent ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span className="text-slate-600 dark:text-slate-300">Skipped (no number / opted out / limit):</span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400">{sendResult?.total_skipped ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-slate-600 dark:text-slate-300">Auto AI Assistant Mode:</span>

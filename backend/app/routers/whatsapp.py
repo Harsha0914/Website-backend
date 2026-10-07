@@ -1,3 +1,5 @@
+import hmac
+import json
 from typing import List, Optional
 
 # pyrefly: ignore [missing-import]
@@ -8,13 +10,16 @@ from fastapi import (
     Query,
     Response,
     Request,
+    BackgroundTasks,
 )
 
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
+from app.auth.dependencies import get_current_user, require_admin
 
+from app.services.whatsapp_guard import SendBlocked, verify_meta_signature
 from app.models.whatsapp import (
     WhatsAppConversation,
     WhatsAppMessage,
@@ -51,482 +56,151 @@ from app.services.whatsapp_service import (
 router = APIRouter(
     prefix="/api/whatsapp",
     tags=["WhatsApp Bot & Live Chat"],
+    dependencies=[Depends(get_current_user)],
 )
 
 
 # =============================================================================
-# META WEBHOOK CONFIGURATION
+# META WEBHOOK (public by design; authenticity is proven by the HMAC signature)
 # =============================================================================
 
-# IMPORTANT:
-# This is the verification token configured in Meta Developer Console.
-# Keep it in sync with WHATSAPP_WEBHOOK_VERIFY_TOKEN in your .env / Render env vars.
+webhook_router = APIRouter(
+    prefix="/api/whatsapp",
+    tags=["WhatsApp Webhook"],
+)
+
+
 def _get_verify_token() -> str:
+    """Token configured in Meta Developer Console. There is deliberately NO default."""
     from app.config import settings
-    return settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN or "shoppresence_whatsapp_webhook_token_123"
+    return (settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN or "").strip()
 
 
-# =============================================================================
-# 1. META WHATSAPP WEBHOOK VERIFICATION
-# =============================================================================
-
-@router.get("/webhook")
+@webhook_router.get("/webhook")
 def verify_whatsapp_webhook(
-    hub_mode: Optional[str] = Query(
-        None,
-        alias="hub.mode",
-    ),
-    hub_verify_token: Optional[str] = Query(
-        None,
-        alias="hub.verify_token",
-    ),
-    hub_challenge: Optional[str] = Query(
-        None,
-        alias="hub.challenge",
-    ),
+    hub_mode: Optional[str] = Query(None, alias="hub.mode"),
+    hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
+    hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
 ):
-    """
-    Meta WhatsApp Cloud API webhook verification endpoint.
-
-    Meta sends a GET request during webhook setup.
-
-    Meta expects:
-
-        hub.mode = subscribe
-        hub.verify_token = your verification token
-        hub.challenge = challenge value
-
-    We return the challenge if the token is correct.
-    """
-
+    """Meta webhook verification handshake."""
+    expected = _get_verify_token()
     if (
-        hub_mode == "subscribe"
-        and hub_verify_token == _get_verify_token()
+        expected
+        and hub_mode == "subscribe"
+        and hub_verify_token
+        and hmac.compare_digest(hub_verify_token, expected)
     ):
         if hub_challenge:
-            return Response(
-                content=hub_challenge,
-                media_type="text/plain",
-            )
+            return Response(content=hub_challenge, media_type="text/plain")
+        return {"status": "verified"}
 
-        return {
-            "status": "verified"
-        }
-
-    raise HTTPException(
-        status_code=403,
-        detail="Webhook verification token mismatch",
-    )
+    raise HTTPException(status_code=403, detail="Webhook verification token mismatch")
 
 
-# =============================================================================
-# 2. META WHATSAPP WEBHOOK RECEIVER
-# =============================================================================
+def _extract_inbound_messages(payload: dict) -> List[dict]:
+    """Flatten a Meta webhook payload into kwargs for process_incoming_whatsapp_message."""
+    from app.config import settings
 
-@router.post("/webhook")
+    wanted_number_id = (settings.WHATSAPP_PHONE_NUMBER_ID or "").strip()
+    out: List[dict] = []
+
+    for entry in payload.get("entry", []) if isinstance(payload.get("entry"), list) else []:
+        for change in entry.get("changes", []) if isinstance(entry, dict) and isinstance(entry.get("changes"), list) else []:
+            value = change.get("value", {}) if isinstance(change, dict) else {}
+            if not isinstance(value, dict):
+                continue
+
+            metadata = value.get("metadata") or {}
+            number_id = str(metadata.get("phone_number_id", "")) if isinstance(metadata, dict) else ""
+            if wanted_number_id and number_id and number_id != wanted_number_id:
+                continue  # event for a different WhatsApp number
+
+            contacts = value.get("contacts") or []
+            names = {}
+            for c in contacts if isinstance(contacts, list) else []:
+                if isinstance(c, dict):
+                    names[str(c.get("wa_id", ""))] = ((c.get("profile") or {}).get("name") or "").strip()
+
+            messages = value.get("messages") or []
+            for msg in messages if isinstance(messages, list) else []:
+                if not isinstance(msg, dict):
+                    continue
+                phone = str(msg.get("from", "") or "").strip()
+                if not phone:
+                    continue
+
+                msg_type = str(msg.get("type", "") or "text")
+                body = ""
+                if msg_type == "text":
+                    body = str((msg.get("text") or {}).get("body", "") or "").strip()
+                elif msg_type == "button":
+                    body = str((msg.get("button") or {}).get("text", "") or "").strip()
+                    msg_type = "text"
+                elif msg_type == "interactive":
+                    inter = msg.get("interactive") or {}
+                    reply = inter.get("button_reply") or inter.get("list_reply") or {}
+                    body = str(reply.get("title", "") or "").strip()
+                    msg_type = "text"
+
+                if msg_type == "text" and not body:
+                    continue
+
+                out.append({
+                    "phone_number": phone,
+                    "message_text": body,
+                    "sender_name": names.get(phone) or "Shop Owner",
+                    "external_message_id": str(msg.get("id", "") or "") or None,
+                    "message_type": msg_type,
+                })
+    return out
+
+
+def _process_webhook_batch(items: List[dict]) -> None:
+    """Runs after the HTTP response is sent, in its own DB session."""
+    db = SessionLocal()
+    try:
+        for item in items:
+            try:
+                process_incoming_whatsapp_message(db=db, **item)
+            except Exception as exc:
+                db.rollback()
+                print(f"[WhatsApp Webhook] Error processing message {item.get('external_message_id')}: {exc}")
+    finally:
+        db.close()
+
+
+@webhook_router.post("/webhook")
 async def receive_whatsapp_webhook(
     request: Request,
-    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks,
 ):
     """
-    Receives incoming WhatsApp messages from Meta Cloud API.
+    Receives incoming WhatsApp events from Meta.
 
-    Flow:
-
-        Meta WhatsApp
-              ↓
-        /api/whatsapp/webhook
-              ↓
-        Extract phone number
-              ↓
-        Extract sender name
-              ↓
-        Extract message text
-              ↓
-        process_incoming_whatsapp_message()
-              ↓
-        AI classification
-              ↓
-        AI response generation
-              ↓
-        WhatsAppCloudClient.send_text()
-              ↓
-        Meta WhatsApp
-              ↓
-        Shop owner receives AI reply
-
-    Non-text messages and WhatsApp status events are ignored safely.
-
-    IMPORTANT:
-    The actual AI + Meta sending logic lives in:
-        app/services/whatsapp_service.py
-
-    This router only receives and forwards the webhook event.
+    1. The raw body must carry a valid X-Hub-Signature-256 (HMAC with the app secret),
+       otherwise anyone could forge a payload and make the bot message a victim.
+    2. The HTTP 200 is returned immediately; the AI pipeline runs in the background so a
+       slow LLM / gateway call can never trigger Meta's retry storm.
+    3. Every message carries its provider id, so a retry is ignored (idempotent).
     """
+    raw = await request.body()
 
-    # -------------------------------------------------------------------------
-    # Read JSON safely
-    # -------------------------------------------------------------------------
+    if not verify_meta_signature(raw, request.headers.get("X-Hub-Signature-256")):
+        raise HTTPException(status_code=403, detail="Invalid webhook signature")
 
     try:
-        payload = await request.json()
-
-    except Exception as exc:
-        print(
-            "[WhatsApp Webhook] Invalid JSON payload:",
-            exc,
-        )
-
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid webhook JSON payload",
-        )
-
-    # -------------------------------------------------------------------------
-    # Validate basic Meta webhook structure
-    # -------------------------------------------------------------------------
+        payload = json.loads(raw or b"{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid webhook JSON payload")
 
     if not isinstance(payload, dict):
-        return {
-            "status": "success",
-            "message": "Webhook payload ignored",
-        }
+        return {"status": "success", "message": "Webhook payload ignored"}
 
-    try:
+    items = _extract_inbound_messages(payload)
+    if items:
+        background_tasks.add_task(_process_webhook_batch, items)
 
-        entries = payload.get(
-            "entry",
-            [],
-        )
-
-        if not isinstance(entries, list):
-            entries = []
-
-        # ---------------------------------------------------------------------
-        # Loop through Meta entries
-        # ---------------------------------------------------------------------
-
-        for entry in entries:
-
-            if not isinstance(entry, dict):
-                continue
-
-            changes = entry.get(
-                "changes",
-                [],
-            )
-
-            if not isinstance(changes, list):
-                continue
-
-            # -----------------------------------------------------------------
-            # Loop through changes
-            # -----------------------------------------------------------------
-
-            for change in changes:
-
-                if not isinstance(change, dict):
-                    continue
-
-                value = change.get(
-                    "value",
-                    {},
-                )
-
-                if not isinstance(value, dict):
-                    continue
-
-                # -------------------------------------------------------------
-                # Meta sends both:
-                #
-                # messages
-                # contacts
-                # metadata
-                # statuses
-                #
-                # We only need messages for incoming chat.
-                # -------------------------------------------------------------
-
-                messages = value.get(
-                    "messages",
-                    [],
-                )
-
-                contacts = value.get(
-                    "contacts",
-                    [],
-                )
-
-                metadata = value.get(
-                    "metadata",
-                    {},
-                )
-
-                # -------------------------------------------------------------
-                # WhatsApp phone number ID
-                #
-                # Example:
-                #
-                # "phone_number_id": "123456789..."
-                #
-                # We currently don't need to pass this to the service,
-                # because WhatsAppCloudClient gets its configuration from DB.
-                # -------------------------------------------------------------
-
-                phone_number_id = ""
-
-                if isinstance(metadata, dict):
-
-                    phone_number_id = str(
-                        metadata.get(
-                            "phone_number_id",
-                            "",
-                        )
-                        or ""
-                    )
-
-                if not isinstance(messages, list):
-                    continue
-
-                # -----------------------------------------------------------------
-                # Process every incoming message
-                # -----------------------------------------------------------------
-
-                for msg in messages:
-
-                    if not isinstance(msg, dict):
-                        continue
-
-                    # -------------------------------------------------------------
-                    # Message type
-                    # -------------------------------------------------------------
-
-                    message_type = msg.get(
-                        "type",
-                        "",
-                    )
-
-                    # -------------------------------------------------------------
-                    # At the moment we process TEXT messages.
-                    #
-                    # Image/document/audio/etc. are ignored here.
-                    # -------------------------------------------------------------
-
-                    if message_type != "text":
-                        print(
-                            "[WhatsApp Webhook] Ignoring message type:",
-                            message_type,
-                        )
-                        continue
-
-                    # -------------------------------------------------------------
-                    # Sender phone number
-                    # -------------------------------------------------------------
-
-                    phone_number = str(
-                        msg.get(
-                            "from",
-                            "",
-                        )
-                        or ""
-                    ).strip()
-
-                    # -------------------------------------------------------------
-                    # Message body
-                    # -------------------------------------------------------------
-
-                    text_object = msg.get(
-                        "text",
-                        {},
-                    )
-
-                    if not isinstance(
-                        text_object,
-                        dict,
-                    ):
-                        text_object = {}
-
-                    body = str(
-                        text_object.get(
-                            "body",
-                            "",
-                        )
-                        or ""
-                    ).strip()
-
-                    # -------------------------------------------------------------
-                    # Skip incomplete messages
-                    # -------------------------------------------------------------
-
-                    if not phone_number or not body:
-                        print(
-                            "[WhatsApp Webhook] "
-                            "Skipping message without phone/body"
-                        )
-                        continue
-
-                    # -------------------------------------------------------------
-                    # Find contact name
-                    # -------------------------------------------------------------
-
-                    contact_name = "Shop Owner"
-
-                    if (
-                        isinstance(
-                            contacts,
-                            list,
-                        )
-                        and contacts
-                    ):
-
-                        # Usually Meta returns the matching contact here.
-                        #
-                        # We use the first contact because this webhook
-                        # currently handles one sender at a time.
-
-                        first_contact = contacts[0]
-
-                        if isinstance(
-                            first_contact,
-                            dict,
-                        ):
-
-                            profile = first_contact.get(
-                                "profile",
-                                {},
-                            )
-
-                            if isinstance(
-                                profile,
-                                dict,
-                            ):
-
-                                contact_name = str(
-                                    profile.get(
-                                        "name",
-                                        "Shop Owner",
-                                    )
-                                    or "Shop Owner"
-                                ).strip()
-
-                    # -------------------------------------------------------------
-                    # Log received message
-                    # -------------------------------------------------------------
-
-                    print(
-                        "[WhatsApp Webhook] "
-                        f"Incoming message from {phone_number}"
-                    )
-
-                    print(
-                        "[WhatsApp Webhook] "
-                        f"Contact: {contact_name}"
-                    )
-
-                    print(
-                        "[WhatsApp Webhook] "
-                        f"Message: {body}"
-                    )
-
-                    if phone_number_id:
-                        print(
-                            "[WhatsApp Webhook] "
-                            f"Phone Number ID: {phone_number_id}"
-                        )
-
-                    # -------------------------------------------------------------
-                    # IMPORTANT:
-                    #
-                    # Send incoming message into whatsapp_service.py
-                    #
-                    # whatsapp_service.py handles:
-                    #
-                    # 1. Create/find conversation
-                    # 2. Save inbound message
-                    # 3. Classify intent
-                    # 4. Calculate lead score
-                    # 5. Extract requirements
-                    # 6. Check AI settings
-                    # 7. Generate AI reply
-                    # 8. Send reply through Meta Cloud API
-                    # 9. Save outbound message
-                    # 10. Save AI audit log
-                    # -------------------------------------------------------------
-
-                    inbound, outbound_ai, is_ai_replied = (
-                        process_incoming_whatsapp_message(
-                            db=db,
-                            phone_number=phone_number,
-                            message_text=body,
-                            sender_name=contact_name,
-                        )
-                    )
-
-                    # -------------------------------------------------------------
-                    # Log result
-                    # -------------------------------------------------------------
-
-                    print(
-                        "[WhatsApp Webhook] "
-                        f"Inbound message saved: {inbound.id}"
-                    )
-
-                    if outbound_ai:
-
-                        print(
-                            "[WhatsApp Webhook] "
-                            f"AI reply generated: {outbound_ai.id}"
-                        )
-
-                    else:
-
-                        print(
-                            "[WhatsApp Webhook] "
-                            "No AI reply generated"
-                        )
-
-                    print(
-                        "[WhatsApp Webhook] "
-                        f"AI replied: {is_ai_replied}"
-                    )
-
-        # ---------------------------------------------------------------------
-        # IMPORTANT:
-        #
-        # Always return success for valid Meta webhook events.
-        #
-        # Meta uses the HTTP response to determine whether delivery succeeded.
-        # ---------------------------------------------------------------------
-
-        return {
-            "status": "success"
-        }
-
-    except Exception as exc:
-
-        # ---------------------------------------------------------------------
-        # Roll back DB transaction if something failed.
-        # ---------------------------------------------------------------------
-
-        try:
-            db.rollback()
-        except Exception:
-            pass
-
-        print(
-            "[WhatsApp Webhook] "
-            "Error processing Meta webhook:",
-            exc,
-        )
-
-        # ---------------------------------------------------------------------
-        # Return error response.
-        # ---------------------------------------------------------------------
-
-        return {
-            "status": "error",
-            "message": str(exc),
-        }
+    return {"status": "success", "queued": len(items)}
 
 
 # =============================================================================
@@ -561,6 +235,7 @@ def simulate_incoming_whatsapp(
             ),
             business_id=payload.business_id,
             shop_name=payload.shop_name,
+            dry_run=True,
         )
     )
 
@@ -882,6 +557,11 @@ def send_manual_whatsapp_reply(
         raise HTTPException(
             status_code=404,
             detail=str(ex),
+        )
+    except SendBlocked as ex:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Message not sent: {ex.reason}",
         )
 
 
@@ -1344,6 +1024,7 @@ def record_shop_reply(
         message_text=message_text,
         sender_name=shop_name or "Shop Owner",
         shop_name=shop_name,
+        dry_run=True,
     )
 
     if lead_status:
@@ -1388,7 +1069,7 @@ def record_shop_reply(
 # 16. RESET WHATSAPP HISTORY
 # =============================================================================
 
-@router.delete("/reset")
+@router.delete("/reset", dependencies=[Depends(require_admin)])
 def reset_history(
     db: Session = Depends(get_db),
 ):
@@ -1405,7 +1086,7 @@ def reset_history(
     )
 
 
-@router.delete("/messages/{message_id}")
+@router.delete("/messages/{message_id}", dependencies=[Depends(require_admin)])
 def delete_single_message(
     message_id: int,
     db: Session = Depends(get_db),
@@ -1437,7 +1118,7 @@ def delete_single_message(
 # 17. WHATSAPP API CONFIGURATION, TEST & SYNC
 # =============================================================================
 
-@router.get("/settings")
+@router.get("/settings", dependencies=[Depends(require_admin)])
 def get_whatsapp_api_settings_route(
     db: Session = Depends(get_db),
 ):
@@ -1454,19 +1135,20 @@ def get_whatsapp_api_settings_route(
         "phone_number_id": getattr(app_settings, "WHATSAPP_PHONE_NUMBER_ID", settings.phone_number_id or "1407135925808911"),
         "lad_api_base_url": getattr(app_settings, "LAD_API_BASE_URL", ""),
         "lad_auth_base_url": getattr(app_settings, "LAD_AUTH_BASE_URL", ""),
-        "lad_auth_email": getattr(app_settings, "LAD_AUTH_EMAIL", "api@lexonit.com"),
+        "lad_auth_email": getattr(app_settings, "LAD_AUTH_EMAIL", ""),
         "has_lad_password": bool(getattr(app_settings, "LAD_AUTH_PASSWORD", "")),
         "has_lad_token": bool(getattr(app_settings, "LAD_API_TOKEN", "") or settings.access_token),
         "default_template_name": getattr(app_settings, "WHATSAPP_DEFAULT_TEMPLATE_NAME", "lexonit_utility_notification"),
         "access_token_configured": bool(settings.access_token or getattr(app_settings, "LAD_API_TOKEN", "")),
-        "webhook_verify_token": settings.webhook_verify_token or "shoppresence_whatsapp_webhook_token_123",
+        "webhook_verify_token_configured": bool(app_settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN),
+        "webhook_signature_check": bool(app_settings.WHATSAPP_APP_SECRET),
         "api_version": settings.api_version or "v22.0",
         "is_test_mode": bool(settings.is_test_mode),
         "webhook_url": "/api/whatsapp/webhook"
     }
 
 
-@router.put("/settings")
+@router.put("/settings", dependencies=[Depends(require_admin)])
 def update_whatsapp_api_settings_route(
     payload: dict,
     db: Session = Depends(get_db),
@@ -1509,7 +1191,7 @@ def update_whatsapp_api_settings_route(
     }
 
 
-@router.post("/sync")
+@router.post("/sync", dependencies=[Depends(require_admin)])
 def sync_whatsapp_conversations_route(
     db: Session = Depends(get_db),
 ):
@@ -1522,7 +1204,7 @@ def sync_whatsapp_conversations_route(
     return result
 
 
-@router.post("/settings/test")
+@router.post("/settings/test", dependencies=[Depends(require_admin)])
 def test_whatsapp_cloud_message(
     to_phone: str = Query(..., description="Recipient phone number with country code, e.g. +919876543210"),
     message: str = Query("Hello! This is a test verification message from Lexon IT WhatsApp API.", description="Test text body"),

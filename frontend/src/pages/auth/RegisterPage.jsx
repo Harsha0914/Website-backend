@@ -21,6 +21,7 @@ export default function RegisterPage() {
 
   const initialRole = searchParams.get('role') === 'admin' ? 'ADMIN' : 'USER';
   const [role, setRole] = useState(initialRole);
+  const [adminCode, setAdminCode] = useState('');
 
   const [formData, setFormData] = useState({
     username: '',
@@ -90,6 +91,11 @@ export default function RegisterPage() {
       return;
     }
 
+    if (role === 'ADMIN' && !adminCode.trim()) {
+      setValidationError('Please enter the admin secret code.');
+      return;
+    }
+
     if (!agreeTerms) {
       setValidationError('Please agree with the terms and conditions to create an account.');
       return;
@@ -104,7 +110,7 @@ export default function RegisterPage() {
         password: formData.password,
         confirm_password: formData.confirm_password,
         role: role,
-        admin_code: role === 'ADMIN' ? 'ADMIN2026' : undefined,
+        admin_code: role === 'ADMIN' ? adminCode.trim() : undefined,
       });
 
       setSuccessMessage(
@@ -355,6 +361,25 @@ export default function RegisterPage() {
                 and Privacy Policy
               </label>
             </div>
+
+            {role === 'ADMIN' && (
+              <div>
+                <label htmlFor="admin_code" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Admin secret code
+                </label>
+                <input
+                  id="admin_code"
+                  name="admin_code"
+                  type="password"
+                  autoComplete="off"
+                  required
+                  value={adminCode}
+                  onChange={(e) => setAdminCode(e.target.value)}
+                  placeholder="Provided by your system owner"
+                  className="w-full px-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
+                />
+              </div>
+            )}
 
             <button
               type="submit"

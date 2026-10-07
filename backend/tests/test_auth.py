@@ -23,7 +23,7 @@ def test_register_admin_success(client):
         "password": "AdminPassword1",
         "confirm_password": "AdminPassword1",
         "role": "ADMIN",
-        "admin_code": "ADMIN2026",
+        "admin_code": "test-admin-code-123",
     })
     assert response.status_code == 201
     data = response.json()
@@ -39,7 +39,7 @@ def test_register_admin_invalid_code(client):
         "role": "ADMIN",
         "admin_code": "WRONGCODE",
     })
-    assert response.status_code == 400
+    assert response.status_code == 403
     assert "Invalid Admin Secret Code" in response.json()["detail"]
 
 def test_register_duplicate_email(client, normal_user):
@@ -77,15 +77,16 @@ def test_login_invalid_password(client, normal_user):
         "password": "WrongPassword999",
     })
     assert response.status_code == 401
-    assert response.json()["detail"] == "Incorrect password. Please try again."
+    # same message as for an unknown account: login never reveals which usernames exist
+    assert response.json()["detail"] == "Invalid username/email or password."
 
 def test_login_unregistered_user(client):
     response = client.post("/api/auth/login", json={
         "username": "nonexistentuser9999",
         "password": "Password123",
     })
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Account not found. Please register first."
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid username/email or password."
 
 def test_register_and_login_with_username(client):
     reg_resp = client.post("/api/auth/register", json={

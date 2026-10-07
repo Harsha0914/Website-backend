@@ -32,7 +32,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://shopuser:shoppassword@postgres:5432/shopdb
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default-secret-key-change-in-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY (32+ random chars) before starting}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost
       GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-}
       USE_MOCK_PLACES: ${USE_MOCK_PLACES:-false}

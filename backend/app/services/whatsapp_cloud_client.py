@@ -77,13 +77,24 @@ class WhatsAppCloudClient:
         recipient_name: Optional[str] = None,
         template_name: Optional[str] = None,
         send_flyer: bool = False,
+        enforce_gate: bool = True,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         Sends standard text message.
+        enforce_gate: refuse opted-out / invalid numbers and the daily cap. Only the
+        STOP confirmation itself may bypass it.
         Routes via Mr LAD API if provider is "mr_lad", else direct Meta Cloud API.
         Returns: (success: bool, wamid_or_error: str, raw_response: dict)
         """
         from app.config import settings as app_settings
+
+        # ── Central send gate (last line of defence for every code path) ──
+        if enforce_gate:
+            from app.services.whatsapp_guard import can_message
+            allowed, reason = can_message(db, to_phone)
+            if not allowed:
+                logger.warning(f"[WhatsApp Gate] Blocked send to ***{''.join(c for c in str(to_phone) if c.isdigit())[-4:]}: {reason}")
+                return False, f"blocked:{reason}", None
 
         # ── Route to Mr LAD API ──────────────────────────────────────────
         if getattr(app_settings, "WHATSAPP_PROVIDER", "mr_lad") == "mr_lad":
@@ -104,7 +115,7 @@ class WhatsAppCloudClient:
         if settings.is_test_mode or not settings.access_token or not settings.phone_number_id:
             mock_wamid = f"wamid.HBgL{uuid.uuid4().hex[:16]}="
             logger.info(f"[Meta Cloud API Simulator] Sent TEXT to {recipient}: {text_body[:40]}... (ID: {mock_wamid})")
-            return True, mock_wamid, {"messaging_product": "whatsapp", "messages": [{"id": mock_wamid}]}
+            return True, mock_wamid, {"messaging_product": "whatsapp", "mode": "simulator", "messages": [{"id": mock_wamid}]}
 
         url = f"https://graph.facebook.com/{settings.api_version}/{settings.phone_number_id}/messages"
         headers = {
@@ -181,7 +192,7 @@ class WhatsAppCloudClient:
         if settings.is_test_mode or not settings.access_token or not settings.phone_number_id:
             mock_wamid = f"wamid.HBgL{uuid.uuid4().hex[:16]}="
             logger.info(f"[Meta Cloud API Simulator] Sent TEMPLATE '{template_name}' to {recipient} (ID: {mock_wamid})")
-            return True, mock_wamid, {"messaging_product": "whatsapp", "messages": [{"id": mock_wamid}]}
+            return True, mock_wamid, {"messaging_product": "whatsapp", "mode": "simulator", "messages": [{"id": mock_wamid}]}
 
         url = f"https://graph.facebook.com/{settings.api_version}/{settings.phone_number_id}/messages"
         headers = {
@@ -241,7 +252,7 @@ class WhatsAppCloudClient:
         if settings.is_test_mode or not settings.access_token or not settings.phone_number_id:
             mock_wamid = f"wamid.HBgL{uuid.uuid4().hex[:16]}="
             logger.info(f"[Meta Cloud API Simulator] Sent MEDIA ({media_type}) to {recipient} (ID: {mock_wamid})")
-            return True, mock_wamid, {"messaging_product": "whatsapp", "messages": [{"id": mock_wamid}]}
+            return True, mock_wamid, {"messaging_product": "whatsapp", "mode": "simulator", "messages": [{"id": mock_wamid}]}
 
         url = f"https://graph.facebook.com/{settings.api_version}/{settings.phone_number_id}/messages"
         headers = {

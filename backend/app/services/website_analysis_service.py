@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from typing import Dict, Any, Tuple
 from app.models.business import WebsiteQuality
 from app.config import settings
+from app.utils.net_safety import SafeClient
 
 def calculate_quality_score(metrics: Dict[str, Any]) -> Tuple[int, WebsiteQuality]:
     """
@@ -74,8 +75,7 @@ async def analyze_website(url: str) -> Dict[str, Any]:
     }
 
     try:
-        async with httpx.AsyncClient(
-            follow_redirects=True,
+        async with SafeClient(
             timeout=settings.WEBSITE_CHECK_TIMEOUT_SECONDS,
             verify=False
         ) as client:

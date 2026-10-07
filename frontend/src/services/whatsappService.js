@@ -7,59 +7,31 @@ import api from './api';
  * Formats valid mobile numbers (+91-9XXXX-XXXXX) and manages Lexon IT WhatsApp API & Auto AI/Manual modes.
  */
 
-export function formatPhoneNumber(phone, shopName = '', placeId = '') {
-  if (phone) {
-    const raw = String(phone).trim();
-    const clean = raw.replace(/\D/g, '');
+/**
+ * Normalises a shop phone number to digits with country code.
+ * Returns '' when there is no plausible real number: numbers are NEVER invented.
+ */
+export function formatPhoneNumber(phone) {
+  if (!phone) return '';
+  const clean = String(phone).replace(/\D/g, '');
 
-    // Special match: 77801 81920
-    if (clean.endsWith('7780181920')) {
-      return '917780181920';
-    }
-
-    // 1. Leading 0 + 10-digit Indian mobile (e.g. 09100166100 -> 919100166100)
-    if (clean.length === 11 && clean.startsWith('0') && ['6', '7', '8', '9'].includes(clean[1])) {
-      return `91${clean.slice(1)}`;
-    }
-
-    // 2. Full 12-digit Indian number with 91 prefix (e.g. 919100166100)
-    if (clean.length === 12 && clean.startsWith('91') && ['6', '7', '8', '9'].includes(clean[2])) {
-      return clean;
-    }
-
-    // 3. 10-digit Indian mobile (e.g. 9100166100 -> 919100166100)
-    if (clean.length === 10 && ['6', '7', '8', '9'].includes(clean[0])) {
-      return `91${clean}`;
-    }
-
-    // 4. Any other numbers >= 10 digits
-    if (clean.length >= 10) {
-      if (clean.startsWith('91') && clean.length === 12) return clean;
-      if (clean.startsWith('0')) return `91${clean.slice(1, 11)}`;
-      return clean.startsWith('91') ? clean : `91${clean.slice(-10)}`;
-    }
-
-    if (clean.length > 0) {
-      return clean;
-    }
+  // 11 digits with a leading 0 + Indian mobile (09100166100 -> 919100166100)
+  if (clean.length === 11 && clean.startsWith('0') && ['6', '7', '8', '9'].includes(clean[1])) {
+    return `91${clean.slice(1)}`;
   }
-
-  // Fallback to primary WhatsApp number if no phone available
-  if (!shopName && !placeId) {
-    return '917780181920';
+  // 12 digits with 91 prefix
+  if (clean.length === 12 && clean.startsWith('91') && ['6', '7', '8', '9'].includes(clean[2])) {
+    return clean;
   }
-
-  const str = `${placeId}_${shopName}`;
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
+  // 10-digit Indian mobile
+  if (clean.length === 10 && ['6', '7', '8', '9'].includes(clean[0])) {
+    return `91${clean}`;
   }
-  const posHash = Math.abs(hash);
-  const prefixes = ['98490', '98480', '98850', '99490', '93910', '91770', '90590', '80080'];
-  const prefix = prefixes[posHash % prefixes.length];
-  const suffix = String(posHash % 100000).padStart(5, '0');
-  return `91${prefix}${suffix}`;
+  // Other international numbers (E.164 allows up to 15 digits)
+  if (clean.length >= 11 && clean.length <= 15 && !clean.startsWith('0') && !clean.startsWith('91')) {
+    return clean;
+  }
+  return '';
 }
 
 /**
@@ -256,7 +228,7 @@ export async function broadcastWhatsAppToAllShops({ shops, customMessage, autoAI
     window.dispatchEvent(new CustomEvent('whatsapp-updated', {
       detail: {
         broadcast: true,
-        count: res.data?.total_sent || shops.length,
+        count: res.data?.total_sent ?? 0,
       }
     }));
   }
@@ -270,8 +242,7 @@ export async function broadcastWhatsAppToAllShops({ shops, customMessage, autoAI
  */
 export async function sendDirectWhatsAppPitch(business, customMessage = null, overridePhone = null, includeFlyer = true) {
   const shopName = business?.name || business?.shop_name || 'Local Shop';
-  const shopGeneratedPhone = formatPhoneNumber(business?.phone || business?.phone_number, shopName, business?.id || business?.external_place_id || '');
-  const rawPhone = overridePhone || business?.phone || business?.phone_number || shopGeneratedPhone;
+  const rawPhone = overridePhone || business?.phone || business?.phone_number || '';
 
   const targetPhone = String(rawPhone).replace(/\D/g, '');
   if (targetPhone.length < 10) {
@@ -305,6 +276,17 @@ export async function sendDirectWhatsAppPitch(business, customMessage = null, ov
   const firstResult = res.data?.results?.[0];
   if (firstResult && firstResult.status === 'error') {
     throw new Error(firstResult.error || 'Failed to send WhatsApp message');
+  }
+  if (firstResult && firstResult.status === 'skipped') {
+    const reasons = {
+      no_valid_phone: 'this shop has no valid phone number',
+      opted_out: 'this number opted out of messages',
+      daily_limit_reached: 'the daily sending limit has been reached',
+      recently_contacted: 'this shop was contacted recently',
+      active_human_conversation: 'a team member is already chatting with this shop',
+      duplicate_in_batch: 'duplicate number',
+    };
+    throw new Error(`Message not sent: ${reasons[firstResult.error] || firstResult.error || 'blocked'}`);
   }
 
   if (typeof window !== 'undefined') {

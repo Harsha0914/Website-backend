@@ -10,6 +10,15 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.database import get_db
+from app.config import settings
+from app.auth.dependencies import get_current_user, require_admin
+from app.services.whatsapp_guard import (
+    SendBlocked,
+    can_message,
+    delivery_status,
+    ensure_opt_out_footer,
+    is_valid_phone,
+)
 from app.models.whatsapp import (
     WhatsAppConversation,
     WhatsAppMessage,
@@ -43,7 +52,11 @@ from app.services.ai_sales_agent import (
     generate_suggested_replies,
 )
 
-router = APIRouter(prefix="/api/ai-whatsapp", tags=["AI WhatsApp Sales & Conversation Hub"])
+router = APIRouter(
+    prefix="/api/ai-whatsapp",
+    tags=["AI WhatsApp Sales & Conversation Hub"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # ─── Pydantic Schemas ────────────────────────────────────────────────────────
@@ -279,6 +292,8 @@ def send_message(
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except SendBlocked as e:
+        raise HTTPException(status_code=409, detail=f"Message not sent: {e.reason}")
 
 
 # ─── 4. Toggle AI Controls ───────────────────────────────────────────────────
@@ -408,7 +423,7 @@ def get_knowledge_base(db: Session = Depends(get_db)):
     }
 
 
-@router.put("/knowledge-base")
+@router.put("/knowledge-base", dependencies=[Depends(require_admin)])
 def update_knowledge_base(payload: KnowledgeBaseUpdateSchema, db: Session = Depends(get_db)):
     kb = get_default_knowledge_base(db)
     
@@ -460,7 +475,7 @@ def get_settings(db: Session = Depends(get_db)):
     }
 
 
-@router.put("/settings")
+@router.put("/settings", dependencies=[Depends(require_admin)])
 def update_settings(payload: AISettingsUpdateSchema, db: Session = Depends(get_db)):
     ai_cfg = get_ai_settings(db)
 
@@ -480,7 +495,8 @@ def simulate_incoming(payload: SimulateMessageSchema, db: Session = Depends(get_
         phone_number=payload.phone_number,
         message_text=payload.message_text,
         shop_name=payload.shop_name or "Local Store",
-        business_id=payload.business_id
+        business_id=payload.business_id,
+        dry_run=True,
     )
 
     return {
@@ -503,8 +519,8 @@ def simulate_incoming(payload: SimulateMessageSchema, db: Session = Depends(get_
 
 
 # ─── 12a. Diagnostic: Test Flyer Send ────────────────────────────────────────
-@router.get("/test-flyer-send")
-def test_flyer_send(to_phone: str = Query("7780181920", description="Phone number to test send")):
+@router.get("/test-flyer-send", dependencies=[Depends(require_admin)])
+def test_flyer_send(to_phone: str = Query(..., description="Phone number to test send")):
     """
     Diagnostic endpoint: tests finding the flyer image and sending it via Mr LAD API.
     Returns detailed status about the image resolution and API response.
@@ -562,12 +578,24 @@ def test_flyer_send(to_phone: str = Query("7780181920", description="Phone numbe
 @router.post("/broadcast-all")
 def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Session = Depends(get_db)):
     """
-    Sends personalized AI website pitch WhatsApp messages to multiple shops in bulk.
-    Automatically provisions conversations in AI WhatsApp Hub with auto AI enabled,
-    records outbound messages, and dispatches via Meta WhatsApp Cloud API.
+    Sends a personalised website pitch to multiple shops.
+
+    Guard rails (all enforced server-side):
+      * caller must be logged in;
+      * batch size, daily cap and a repeat-contact cooldown are enforced;
+      * numbers must be real mobile numbers - nothing is ever invented;
+      * opted-out numbers and live human conversations are skipped;
+      * every pitch carries an opt-out line;
+      * each message is recorded with its TRUE delivery status.
     """
     if not payload.shops:
         raise HTTPException(status_code=400, detail="No shops provided for broadcast.")
+    max_batch = int(settings.WHATSAPP_MAX_BROADCAST_BATCH or 0)
+    if max_batch and len(payload.shops) > max_batch:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many recipients ({len(payload.shops)}). Maximum per broadcast is {max_batch}.",
+        )
 
     default_template = (
         "Hello {shop_name},\n\n"
@@ -577,12 +605,15 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
     )
 
     template = payload.custom_message.strip() if payload.custom_message and payload.custom_message.strip() else default_template
+    template = ensure_opt_out_footer(template)
+
     results = []
     sent_count = 0
+    skipped_count = 0
+    seen_phones: set = set()
+    attempted_send = False
 
-    for idx, shop in enumerate(payload.shops):
-        if idx > 0:
-            time.sleep(0.8)
+    for shop in payload.shops:
         s_name = str(shop.get("name") or shop.get("shop_name") or "Local Shop").strip()
         raw_phone = str(shop.get("phone") or shop.get("phone_number") or "").strip()
         b_id = shop.get("business_id") or shop.get("id")
@@ -595,21 +626,32 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                 b_id = None
 
         s_category = str(shop.get("category") or "Shop").strip()
-        s_place_id = str(shop.get("external_place_id") or shop.get("place_id") or b_id or "")
+        norm_phone = normalize_whatsapp_phone(raw_phone) if raw_phone else ""
 
-        # Compute clean phone number
-        if raw_phone:
-            norm_phone = normalize_whatsapp_phone(raw_phone)
-        else:
-            # Deterministic fallback number for testing
-            str_key = f"{s_place_id}_{s_name}"
-            pos_hash = abs(hash(str_key))
-            prefixes = ['98490', '98480', '98850', '99490', '93910', '91770', '90590', '80080']
-            prefix = prefixes[pos_hash % len(prefixes)]
-            suffix = str(pos_hash % 100000).zfill(5)
-            norm_phone = f"91{prefix}{suffix}"
+        def _skip(reason: str):
+            nonlocal skipped_count
+            skipped_count += 1
+            results.append({
+                "shop_name": s_name,
+                "phone_number": norm_phone or None,
+                "status": "skipped",
+                "error": reason,
+            })
 
-        # Personalize template
+        # Never invent a number: no phone / junk phone means no message.
+        if not is_valid_phone(norm_phone):
+            _skip("no_valid_phone")
+            continue
+        if norm_phone in seen_phones:
+            _skip("duplicate_in_batch")
+            continue
+        seen_phones.add(norm_phone)
+
+        allowed, reason = can_message(db, norm_phone, check_cooldown=True)
+        if not allowed:
+            _skip(reason or "blocked")
+            continue
+
         personalized_msg = (
             template
             .replace("{shop_name}", s_name)
@@ -620,7 +662,6 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
         )
 
         try:
-            # 1. Get or create conversation thread
             conv = get_or_create_whatsapp_conversation(
                 db=db,
                 phone_number=norm_phone,
@@ -628,18 +669,25 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                 business_id=b_id,
             )
 
+            # A person is already handling this lead: don't let a cold pitch cut across them.
+            if conv.human_takeover or conv.conversation_status == "HUMAN_HANDOFF":
+                _skip("active_human_conversation")
+                continue
+
             conv.auto_ai_enabled = bool(payload.auto_ai_enabled)
-            conv.human_takeover = False
-            conv.lead_status = LeadStatus.CONTACTED.value
+            if conv.lead_status in (None, "", "NEW", "CONTACTED"):
+                conv.lead_status = LeadStatus.CONTACTED.value
             conv.conversation_status = "AI_ACTIVE"
             conv.last_message_at = datetime.utcnow()
 
-            # 2. Dispatch via Meta WhatsApp Cloud API client
-            whatsapp_sent = False
-            w_res = None
+            if attempted_send:
+                time.sleep(float(settings.WHATSAPP_BROADCAST_DELAY_SECONDS or 0))
+            attempted_send = True
+
             should_send_flyer = bool(getattr(payload, "include_flyer", True))
+            whatsapp_sent, w_res, w_raw = False, None, None
             try:
-                whatsapp_sent, w_res, _ = WhatsAppCloudClient.send_text(
+                whatsapp_sent, w_res, w_raw = WhatsAppCloudClient.send_text(
                     db=db,
                     to_phone=conv.phone_number,
                     text_body=personalized_msg,
@@ -648,10 +696,10 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                     send_flyer=should_send_flyer,
                 )
             except Exception as w_err:
-                whatsapp_sent = False
-                w_res = str(w_err)
+                whatsapp_sent, w_res = False, str(w_err)
 
-            # 3. Create outbound message record for pitch with attached image flyer as single message
+            status = delivery_status(whatsapp_sent, w_raw)
+
             msg_body_record = (
                 f"[Attached: EasyBillBro Restaurant Billing & POS Flyer]\n\n{personalized_msg}"
                 if should_send_flyer
@@ -664,39 +712,36 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                 sender_name=payload.operator_name or "Lexon IT AI Assistant",
                 message_body=msg_body_record,
                 ai_generated=bool(payload.auto_ai_enabled),
-                status="sent" if whatsapp_sent else "failed",
+                status=status,
                 is_read=True,
                 created_at=datetime.utcnow(),
             )
             db.add(outbound_msg)
 
-
-            # 4. Log AI outreach activity
             if payload.auto_ai_enabled:
-                aim_log = AIMessageLog(
+                db.add(AIMessageLog(
                     conversation_id=conv.id,
                     incoming_text="Bulk AI Outreach Broadcast (No-Website Shops)",
                     ai_response_text=personalized_msg,
-                    model_used="gemini-1.5-flash",
+                    model_used="template",
                     intent="OUTREACH_WEBSITE_PITCH",
                     confidence=0.98,
                     sentiment="POSITIVE",
-                    tokens_used=75,
-                    latency_ms=30,
-                    was_sent=whatsapp_sent,
-                )
-                db.add(aim_log)
+                    tokens_used=len(personalized_msg.split()),
+                    latency_ms=0,
+                    was_sent=(status == "sent"),
+                ))
 
             db.commit()
-            if whatsapp_sent:
+            if status == "sent":
                 sent_count += 1
 
             results.append({
                 "conversation_id": conv.id,
                 "shop_name": s_name,
                 "phone_number": norm_phone,
-                "status": "sent" if whatsapp_sent else "error",
-                "error": None if whatsapp_sent else str(w_res or "Failed to deliver WhatsApp message"),
+                "status": status if status != "failed" else "error",
+                "error": None if status != "failed" else str(w_res or "Failed to deliver WhatsApp message"),
                 "message_id": outbound_msg.id,
                 "auto_ai_enabled": conv.auto_ai_enabled,
             })
@@ -713,5 +758,6 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
         "status": "success",
         "total_targeted": len(payload.shops),
         "total_sent": sent_count,
+        "total_skipped": skipped_count,
         "results": results,
     }

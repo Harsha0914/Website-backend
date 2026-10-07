@@ -1,45 +1,72 @@
+import hmac
 import os
+import secrets
 import smtplib
-import random
+import threading
 import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
-# In-memory OTP storage: email -> (otp_code, expires_at_timestamp)
-_OTP_CACHE: Dict[str, Tuple[str, float]] = {}
+from app.config import settings
+
+# In-memory OTP storage: email -> [otp_code, expires_at, failed_attempts, issued_at]
+# (single-instance; move to Redis if you run several workers)
+_OTP_CACHE: Dict[str, List] = {}
+_OTP_LOCK = threading.Lock()
+
 
 def generate_otp(length: int = 6) -> str:
-    """Generate a cryptographically suitable numeric OTP."""
-    return "".join(str(random.randint(0, 9)) for _ in range(length))
+    """Cryptographically secure numeric OTP."""
+    return "".join(str(secrets.randbelow(10)) for _ in range(length))
+
+
+def can_issue_otp(email: str) -> bool:
+    """False while the previous code for this address is still inside the resend cooldown."""
+    clean_email = email.lower().strip()
+    with _OTP_LOCK:
+        entry = _OTP_CACHE.get(clean_email)
+        if not entry:
+            return True
+        return time.time() - entry[3] >= settings.OTP_RESEND_COOLDOWN_SECONDS
+
 
 def store_otp(email: str, otp: str, expire_seconds: int = 600) -> None:
-    """Store OTP for email with expiration."""
+    """Store OTP for email with expiration (replaces any previous code)."""
     clean_email = email.lower().strip()
-    expires_at = time.time() + expire_seconds
-    _OTP_CACHE[clean_email] = (otp, expires_at)
+    now = time.time()
+    with _OTP_LOCK:
+        _OTP_CACHE[clean_email] = [otp, now + expire_seconds, 0, now]
+
 
 def verify_otp(email: str, otp: str) -> bool:
-    """Verify if OTP is valid and not expired."""
+    """
+    Verify an OTP. There are NO universal/test codes. A code is single-use, expires, and
+    is destroyed after OTP_MAX_ATTEMPTS wrong guesses (stops brute-forcing the 6 digits).
+    """
     clean_email = email.lower().strip()
     clean_otp = str(otp).strip()
-    
-    # Check if universal test OTP or cached OTP
-    if clean_email not in _OTP_CACHE:
-        # Fallback for dev / master testing
-        return clean_otp in ("123456", "999999")
-
-    stored_otp, expires_at = _OTP_CACHE[clean_email]
-    if time.time() > expires_at:
-        # Expired
-        _OTP_CACHE.pop(clean_email, None)
+    with _OTP_LOCK:
+        entry = _OTP_CACHE.get(clean_email)
+        if not entry:
+            return False
+        stored_otp, expires_at, attempts, _issued = entry
+        if time.time() > expires_at or attempts >= settings.OTP_MAX_ATTEMPTS:
+            _OTP_CACHE.pop(clean_email, None)
+            return False
+        if hmac.compare_digest(stored_otp.encode(), clean_otp.encode()):
+            _OTP_CACHE.pop(clean_email, None)  # single use
+            return True
+        entry[2] = attempts + 1
+        if entry[2] >= settings.OTP_MAX_ATTEMPTS:
+            _OTP_CACHE.pop(clean_email, None)
         return False
 
-    if stored_otp == clean_otp or clean_otp in ("123456", "999999"):
-        _OTP_CACHE.pop(clean_email, None) # Invalidate on success
-        return True
 
-    return False
+def reset_otp_cache() -> None:
+    with _OTP_LOCK:
+        _OTP_CACHE.clear()
+
 
 def send_otp_email(recipient_email: str, otp: str) -> dict:
     """
@@ -103,8 +130,12 @@ def send_otp_email(recipient_email: str, otp: str) -> dict:
             return {"sent": True, "method": "smtp", "message": "OTP email sent successfully"}
         except Exception as e:
             print(f"SMTP send failed: {e}")
-            return {"sent": False, "method": "smtp_error", "error": str(e), "otp": otp}
+            return {"sent": False, "method": "smtp_error", "error": "SMTP delivery failed"}
     
-    # Simulated / Logged delivery for development or when SMTP is not configured
-    print(f"[OTP DELIVERY] Sent OTP {otp} to {recipient_email}")
-    return {"sent": True, "method": "simulated", "otp": otp, "message": "OTP generated and delivered"}
+    # SMTP is not configured. Only outside production is the code written to the server log
+    # (so local development works); in production it is never logged or returned.
+    if settings.is_production:
+        print("[OTP DELIVERY] SMTP is not configured: reset code could not be delivered.")
+    else:
+        print(f"[OTP DELIVERY][dev only] OTP {otp} for {recipient_email}")
+    return {"sent": False, "method": "simulated", "message": "SMTP not configured"}

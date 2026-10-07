@@ -12,11 +12,21 @@ services:
       - key: DEBUG
         value: "false"
       - key: ADMIN_SECRET_CODE
-        value: ADMIN2026
+        sync: false
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: CORS_ORIGINS
-        value: "*"
+        sync: false   # comma-separated extra origins; *.vercel.app / *.pages.dev / *.onrender.com are already allowed
+      - key: MONGODB_URI
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
       - key: GOOGLE_PLACES_API_KEY
         sync: false
       - key: GEMINI_API_KEY
@@ -36,13 +46,21 @@ services:
       - key: LAD_AUTH_BASE_URL
         value: https://lad-backend-stage-axxjxdzmbq-uc.a.run.app
       - key: LAD_AUTH_EMAIL
-        value: api@lexonit.com
+        sync: false
       - key: LAD_AUTH_PASSWORD
-        value: Solution@lit123
+        sync: false
       - key: WHATSAPP_DEFAULT_TEMPLATE_NAME
         value: lexon_official_pitch
       - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
-        value: shoppresence_whatsapp_webhook_token_123
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_ADMIN_COPY_NUMBER
+        value: "+917780181920"
+      - key: WHATSAPP_DAILY_SEND_LIMIT
+        value: "200"
+      - key: WHATSAPP_MAX_BROADCAST_BATCH
+        value: "50"
       - key: WHATSAPP_API_VERSION
         value: v22.0
       - key: WHATSAPP_IS_TEST_MODE

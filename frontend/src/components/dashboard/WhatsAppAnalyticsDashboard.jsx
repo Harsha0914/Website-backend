@@ -65,7 +65,7 @@ export default function WhatsAppAnalyticsDashboard() {
     phone_number_id: '',
     business_account_id: '',
     access_token: '',
-    webhook_verify_token: 'shoppresence_whatsapp_webhook_token_123',
+    webhook_verify_token: '',
     api_version: 'v21.0',
     is_test_mode: true,
   });
@@ -136,7 +136,7 @@ export default function WhatsAppAnalyticsDashboard() {
           phone_number_id: data.phone_number_id || '',
           business_account_id: data.business_account_id || '',
           access_token: '',
-          webhook_verify_token: data.webhook_verify_token || 'shoppresence_whatsapp_webhook_token_123',
+          webhook_verify_token: '',
           api_version: data.api_version || 'v21.0',
           is_test_mode: data.is_test_mode ?? true,
         });

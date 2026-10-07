@@ -55,16 +55,23 @@ class RefreshRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
+    """Change a password you know: the current password is mandatory."""
     email: EmailStr
-    old_password: str | None = None
+    old_password: str
     new_password: str
     confirm_password: str | None = None
 
     @field_validator("new_password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 6:
-            raise ValueError("Password must be at least 6 characters")
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit")
         return v
 
     @field_validator("confirm_password")
@@ -89,8 +96,8 @@ class VerifyOtpResetPasswordRequest(BaseModel):
     @classmethod
     def otp_format(cls, v: str) -> str:
         v = v.strip()
-        if len(v) < 4:
-            raise ValueError("OTP must be at least 4 characters")
+        if not v.isdigit() or not (4 <= len(v) <= 8):
+            raise ValueError("Code must be 4-8 digits")
         return v
 
     @field_validator("new_password")
@@ -115,10 +122,5 @@ class VerifyOtpResetPasswordRequest(BaseModel):
 
 
 class GoogleAuthRequest(BaseModel):
-    email: EmailStr
-    full_name: str | None = None
-    sub: str | None = None
-    role: str = "USER"
-
-
-
+    """The Google ID token (JWT) returned by Google Sign-In. Nothing else is trusted from the client."""
+    id_token: str

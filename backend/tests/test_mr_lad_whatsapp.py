@@ -50,4 +50,5 @@ def test_whatsapp_settings_api(client, admin_token):
     assert data["whatsapp_number"] == "+917780181920"
     assert data["phone_number_id"] == "1407135925808911"
     assert data["business_account_id"] == "2912980445715643"
-    assert data["lad_auth_email"] == "api@lexonit.com"
+    # credentials come from the environment now; no hardcoded default is ever returned
+    assert data["lad_auth_email"] == (settings.LAD_AUTH_EMAIL or "")

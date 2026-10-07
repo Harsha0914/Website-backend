@@ -1,6 +1,6 @@
 from datetime import datetime
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -15,6 +15,7 @@ from app.schemas.chat import (
 )
 from app.services.chat_service import generate_ai_response
 from app.auth.dependencies import get_current_user
+from app.rate_limit import limiter
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
@@ -160,16 +161,18 @@ def send_message(
 
 # ─── Public Website AI Consultant Chat Assistant ─────────────────────────────
 # pyrefly: ignore [missing-import]
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
 class WebAssistantRequest(BaseModel):
-    message: str
-    shop_type: Optional[str] = None
-    conversation_history: Optional[List[Dict[str, str]]] = None
+    message: str = Field(max_length=2000)
+    shop_type: Optional[str] = Field(default=None, max_length=100)
+    conversation_history: Optional[List[Dict[str, str]]] = Field(default=None, max_length=20)
 
 @router.post("/assistant")
+@limiter.limit("30/minute")
 def chat_with_web_assistant(
+    request: Request,
     req: WebAssistantRequest,
     db: Session = Depends(get_db)
 ):

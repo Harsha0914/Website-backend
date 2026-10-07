@@ -114,18 +114,14 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  googleAuth: async ({ email, full_name, role = 'USER' }) => {
+  // idToken is the Google Sign-In credential (JWT); the server verifies it with Google.
+  googleAuth: async ({ idToken }) => {
     set({ loading: true, error: null });
     try {
-      const cleanEmail = (email || '').trim().toLowerCase();
-      const res = await api.post('/auth/google', {
-        email: cleanEmail,
-        full_name: full_name || cleanEmail.split('@')[0],
-        role,
-      });
+      const res = await api.post('/auth/google', { id_token: idToken });
       const data = res.data;
       const { access_token, refresh_token, role: userRole, full_name: name, user_id, username } = data;
-      const userInfo = { id: user_id, username: username || cleanEmail, email: cleanEmail, full_name: name, role: userRole };
+      const userInfo = { id: user_id, username, full_name: name, role: userRole };
 
       try {
         localStorage.setItem('access_token', access_token);

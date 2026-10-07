@@ -1,16 +1,15 @@
 import os
 # pyrefly: ignore [missing-import]
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
 # pyrefly: ignore [missing-import]
-from slowapi import Limiter, _rate_limit_exceeded_handler
-# pyrefly: ignore [missing-import]
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 # pyrefly: ignore [missing-import]
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
+from app.auth.dependencies import require_admin
 from app.database import engine, Base
 import app.models  # Ensure all models are registered with Base
 
@@ -90,7 +89,7 @@ def _ensure_sqlite_columns():
 
 _ensure_sqlite_columns()
 
-limiter = Limiter(key_func=get_remote_address)
+from app.rate_limit import limiter
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -115,10 +114,9 @@ app.add_middleware(
         "http://localhost:8001",
         "http://localhost",
         "http://127.0.0.1",
-        "https://vercel.com",
     ],
     allow_origin_regex=r"https://.*(\.vercel\.app|\.pages\.dev|\.onrender\.com)",
-    allow_credentials=True,
+    allow_credentials=False,  # auth is a Bearer header, never a cookie: nothing needs credentialed CORS
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -132,6 +130,7 @@ app.include_router(website.router)
 app.include_router(chat.router)
 app.include_router(admin.router)
 app.include_router(whatsapp.router)
+app.include_router(whatsapp.webhook_router)
 app.include_router(ai_whatsapp_hub.router)
 
 # Serve flyer image directly
@@ -161,19 +160,11 @@ def root():
 @app.get("/health")
 @app.get("/api/health")
 def health_check():
-    from app.mongodb import get_mongo_status
-    mongo_stat = get_mongo_status()
-    return {
-        "status": "healthy",
-        "database": "sqlite" if str(engine.url).startswith("sqlite") else "postgres",
-        "mongodb": {
-            "status": "connected" if mongo_stat.get("connected") else "disconnected",
-            "database": mongo_stat.get("database"),
-            "counts": mongo_stat.get("counts", {}),
-        }
-    }
+    """Public liveness probe: deliberately reveals nothing about infrastructure."""
+    return {"status": "healthy"}
 
-@app.get("/api/health/mongodb")
+
+@app.get("/api/health/mongodb", dependencies=[Depends(require_admin)])
 def mongodb_health():
     from app.mongodb import get_mongo_status
     return get_mongo_status()
@@ -182,13 +173,27 @@ def mongodb_health():
 @app.on_event("startup")
 async def start_whatsapp_background_poller():
     """
-    Background worker that continuously syncs incoming WhatsApp messages
-    from the Mr LAD API and automatically triggers the Website Detection AI sales assistant.
+    Background worker that syncs incoming WhatsApp messages from the Mr LAD API and runs
+    each new one through the same AI pipeline as the Meta webhook.
+
+    Safe by default: honours WHATSAPP_POLLER_ENABLED, polls every
+    WHATSAPP_POLL_INTERVAL_SECONDS (default 30s, minimum 10s), backs off on repeated
+    failures and logs errors instead of swallowing them.
     """
     import asyncio
+    import logging
+
+    if not settings.WHATSAPP_POLLER_ENABLED:
+        return
+    if (settings.WHATSAPP_PROVIDER or "").lower() != "mr_lad":
+        return
+
+    log = logging.getLogger("whatsapp.poller")
 
     async def _poller():
         await asyncio.sleep(2)
+        interval = max(10, int(settings.WHATSAPP_POLL_INTERVAL_SECONDS or 30))
+        failures = 0
         while True:
             try:
                 from app.database import SessionLocal
@@ -196,14 +201,18 @@ async def start_whatsapp_background_poller():
 
                 db = SessionLocal()
                 try:
-                    await asyncio.to_thread(MrLadWhatsAppClient.sync_recent_conversations, db)
+                    result = await asyncio.to_thread(MrLadWhatsAppClient.sync_recent_conversations, db)
                 finally:
                     db.close()
+                if result.get("status") == "error":
+                    failures += 1
+                    log.warning("WhatsApp sync error: %s", result.get("message"))
+                else:
+                    failures = 0
             except Exception:
-                pass
-            await asyncio.sleep(4)
+                failures += 1
+                log.exception("WhatsApp poller iteration failed")
+            # exponential back-off (max 10 minutes) while the gateway is failing
+            await asyncio.sleep(min(interval * (2 ** min(failures, 5)), 600) if failures else interval)
 
     asyncio.create_task(_poller())
-
-
-
