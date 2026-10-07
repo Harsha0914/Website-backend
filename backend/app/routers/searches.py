@@ -10,6 +10,9 @@ from app.auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/search", tags=["Search History"])
 
+# Both spellings are served directly: a redirect from "/api/search" to "/api/search/" makes browsers
+# drop the Authorization header (cross-origin 307), which silently lost every search record.
+@router.post("", response_model=SearchOut, include_in_schema=False)
 @router.post("/", response_model=SearchOut)
 def record_search(
     req: SearchCreate,
