@@ -78,6 +78,9 @@ def seed_empty_database(target_engine: Engine, metadata, seed_path: Optional[str
             except Exception as err:
                 logger.warning("[db_bootstrap] could not copy table %s: %s", table.name, err)
 
+        if "whatsapp_conversations" in copied:
+            from app.db_migrations import assign_legacy_conversations
+            assign_legacy_conversations(target_engine)  # bundled chats predate accounts: first account owns them
         if target_engine.dialect.name == "postgresql" and copied:
             with target_engine.begin() as conn:
                 _fix_postgres_sequences(conn, metadata.sorted_tables)

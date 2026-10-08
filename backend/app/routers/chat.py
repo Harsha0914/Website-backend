@@ -95,11 +95,11 @@ def get_conversation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    # Private to the account that owns it: someone else's conversation looks like one that does not exist
+    # (administrators included).
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.user_id == current_user.id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    if conv.user_id != current_user.id and current_user.role.value != "ADMIN":
-        raise HTTPException(status_code=403, detail="Unauthorized")
     return conv
 
 @router.post("/conversations/{conversation_id}/messages", response_model=list[MessageOut])
@@ -109,11 +109,11 @@ def send_message(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    # Private to the account that owns it: someone else's conversation looks like one that does not exist
+    # (administrators included).
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.user_id == current_user.id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    if conv.user_id != current_user.id and current_user.role.value != "ADMIN":
-        raise HTTPException(status_code=403, detail="Unauthorized")
 
     # 1. Save user message
     user_msg = Message(

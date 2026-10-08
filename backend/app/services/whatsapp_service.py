@@ -331,22 +331,61 @@ def normalize_whatsapp_phone(phone: str | None) -> str:
 # GET OR CREATE CONVERSATION
 # ─────────────────────────────────────────────────────────────────────────────
 
+def resolve_inbound_owner(db: Session, phone_number: str) -> Optional[int]:
+    """
+    A message that arrives from a shop (webhook / poller) has no logged-in user. It belongs to the
+    account that most recently messaged that number; if no account ever did, it belongs to nobody.
+    """
+    norm_phone = normalize_whatsapp_phone(phone_number)
+    key = "".join(ch for ch in (norm_phone or phone_number or "") if ch.isdigit())[-10:]
+    if len(key) < 10:
+        return None
+    row = (
+        db.query(WhatsAppConversation.owner_id)
+        .join(WhatsAppMessage, WhatsAppMessage.conversation_id == WhatsAppConversation.id)
+        .filter(
+            WhatsAppConversation.phone_number.like(f"%{key}"),
+            WhatsAppConversation.owner_id.isnot(None),
+            WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
+        )
+        .order_by(WhatsAppMessage.created_at.desc(), WhatsAppMessage.id.desc())
+        .first()
+    )
+    if row:
+        return row[0]
+    row = (
+        db.query(WhatsAppConversation.owner_id)
+        .filter(WhatsAppConversation.phone_number.like(f"%{key}"), WhatsAppConversation.owner_id.isnot(None))
+        .order_by(WhatsAppConversation.last_message_at.desc())
+        .first()
+    )
+    return row[0] if row else None
+
+
 def get_or_create_whatsapp_conversation(
     db: Session,
     phone_number: str,
     shop_name: str = "Local Shop",
     business_id: Optional[int] = None,
+    owner_id: Optional[int] = None,
 ) -> WhatsAppConversation:
+    """One conversation per (account, number). owner_id=None only for chats that belong to no account."""
 
     norm_phone = normalize_whatsapp_phone(phone_number)
 
+    owner_filter = (
+        WhatsAppConversation.owner_id == owner_id
+        if owner_id is not None
+        else WhatsAppConversation.owner_id.is_(None)
+    )
     conv = (
         db.query(WhatsAppConversation)
         .filter(
+            owner_filter,
             or_(
                 WhatsAppConversation.phone_number == norm_phone,
                 WhatsAppConversation.phone_number == phone_number,
-            )
+            ),
         )
         .first()
     )
@@ -367,6 +406,7 @@ def get_or_create_whatsapp_conversation(
                 business_id = biz.id
 
         conv = WhatsAppConversation(
+            owner_id=owner_id,
             phone_number=norm_phone or phone_number,
             shop_name=shop_name,
             business_id=business_id,
@@ -481,6 +521,7 @@ def process_incoming_whatsapp_message(
     allow_reply: bool = True,
     dry_run: bool = False,
     message_type: str = "text",
+    owner_id: Optional[int] = None,
 ) -> Tuple[
     WhatsAppMessage,
     Optional[WhatsAppMessage],
@@ -519,12 +560,16 @@ def process_incoming_whatsapp_message(
         if biz:
             biz_name = biz.name
 
-    # 2. Conversation
+    # 2. Conversation. A logged-in user's call passes owner_id; a message that simply arrived from
+    # a shop is attached to the account that last messaged that number (or to nobody).
+    if owner_id is None:
+        owner_id = resolve_inbound_owner(db, phone_number)
     conv = get_or_create_whatsapp_conversation(
         db=db,
         phone_number=phone_number,
         shop_name=biz_name,
         business_id=business_id,
+        owner_id=owner_id,
     )
     if not biz and conv.business_id:
         biz = db.query(Business).filter(Business.id == conv.business_id).first()
@@ -1107,6 +1152,7 @@ def get_comprehensive_whatsapp_analytics(
     period: str = "today",
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    owner_id: Optional[int] = None,
 ) -> dict:
 
     now = datetime.utcnow()
@@ -1276,14 +1322,20 @@ def get_comprehensive_whatsapp_analytics(
     # Messages
     # ─────────────────────────────────────────────────────────────────────
 
+    # Everything below is limited to the conversations of ONE account (owner_id).
+    own_conv_ids = [
+        r[0] for r in db.query(WhatsAppConversation.id).filter(WhatsAppConversation.owner_id == owner_id).all()
+    ] if owner_id is not None else []
+
     messages_in_range = (
         db.query(WhatsAppMessage)
         .filter(
+            WhatsAppMessage.conversation_id.in_(own_conv_ids),
             WhatsAppMessage.created_at >= start_dt,
             WhatsAppMessage.created_at <= end_dt,
         )
         .all()
-    )
+    ) if own_conv_ids else []
 
     # ─────────────────────────────────────────────────────────────────────
     # Conversations
@@ -1291,8 +1343,9 @@ def get_comprehensive_whatsapp_analytics(
 
     all_conversations = (
         db.query(WhatsAppConversation)
+        .filter(WhatsAppConversation.owner_id == owner_id)
         .all()
-    )
+    ) if owner_id is not None else []
 
     conv_ids_in_range = {
         m.conversation_id
@@ -1408,11 +1461,12 @@ def get_comprehensive_whatsapp_analytics(
     ai_logs = (
         db.query(AIMessageLog)
         .filter(
+            AIMessageLog.conversation_id.in_(own_conv_ids),
             AIMessageLog.created_at >= start_dt,
             AIMessageLog.created_at <= end_dt,
         )
         .all()
-    )
+    ) if own_conv_ids else []
 
     ai_conversations_count = len(
         {
@@ -1714,6 +1768,7 @@ def get_comprehensive_whatsapp_analytics(
     recent_messages = (
         db.query(WhatsAppMessage)
         .filter(
+            WhatsAppMessage.conversation_id.in_(own_conv_ids),
             WhatsAppMessage.created_at >= start_dt,
             WhatsAppMessage.created_at <= end_dt,
         )
@@ -1722,12 +1777,13 @@ def get_comprehensive_whatsapp_analytics(
         )
         .limit(10)
         .all()
-    )
+    ) if own_conv_ids else []
 
-    if not recent_messages:
+    if not recent_messages and own_conv_ids:
 
         recent_messages = (
             db.query(WhatsAppMessage)
+            .filter(WhatsAppMessage.conversation_id.in_(own_conv_ids))
             .order_by(
                 WhatsAppMessage.created_at.desc()
             )
@@ -1920,6 +1976,7 @@ def get_whatsapp_analytics_stats(
     period: str = "today",
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    owner_id: Optional[int] = None,
 ) -> dict:
 
     return get_comprehensive_whatsapp_analytics(
@@ -1927,6 +1984,7 @@ def get_whatsapp_analytics_stats(
         period=period,
         start_date=start_date,
         end_date=end_date,
+        owner_id=owner_id,
     )
 
 
@@ -1982,6 +2040,7 @@ def track_whatsapp_outbound_contact(
     shop_name: str,
     business_id: Optional[int] = None,
     message_text: Optional[str] = None,
+    owner_id: Optional[int] = None,
 ) -> WhatsAppMessage:
 
     conv = get_or_create_whatsapp_conversation(
@@ -1989,6 +2048,7 @@ def track_whatsapp_outbound_contact(
         phone_number=phone_number,
         shop_name=shop_name,
         business_id=business_id,
+        owner_id=owner_id,
     )
 
     body = (
@@ -2040,24 +2100,27 @@ def track_whatsapp_outbound_contact(
 
 def reset_whatsapp_history(
     db: Session,
+    owner_id: Optional[int] = None,
 ) -> dict:
+    """Delete ONE account's WhatsApp history. Never touches another account's chats."""
 
     try:
+        if owner_id is None:
+            return {"status": "error", "message": "No account given; nothing was deleted."}
 
-        db.query(AIMessageLog).delete()
-
-        db.query(FollowUpSchedule).delete()
-
-        db.query(WhatsAppMessage).delete()
-
-        db.query(WhatsAppConversation).delete()
+        ids = [r[0] for r in db.query(WhatsAppConversation.id).filter(WhatsAppConversation.owner_id == owner_id).all()]
+        if ids:
+            db.query(AIMessageLog).filter(AIMessageLog.conversation_id.in_(ids)).delete(synchronize_session=False)
+            db.query(FollowUpSchedule).filter(FollowUpSchedule.conversation_id.in_(ids)).delete(synchronize_session=False)
+            db.query(WhatsAppMessage).filter(WhatsAppMessage.conversation_id.in_(ids)).delete(synchronize_session=False)
+            db.query(WhatsAppConversation).filter(WhatsAppConversation.id.in_(ids)).delete(synchronize_session=False)
 
         db.commit()
 
         return {
             "status": "success",
             "message":
-                "All WhatsApp conversations "
+                "All of your WhatsApp conversations "
                 "and logs have been reset.",
         }
 

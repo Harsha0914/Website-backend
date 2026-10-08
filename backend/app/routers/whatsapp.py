@@ -20,6 +20,11 @@ from app.database import get_db, SessionLocal
 from app.auth.dependencies import get_current_user, require_admin
 
 from app.services.whatsapp_guard import SendBlocked, verify_meta_signature
+from app.services.whatsapp_access import (
+    owned_conversation_or_404,
+    owned_message_or_404,
+    own_conversations,
+)
 from app.models.whatsapp import (
     WhatsAppConversation,
     WhatsAppMessage,
@@ -214,6 +219,7 @@ async def receive_whatsapp_webhook(
 def simulate_incoming_whatsapp(
     payload: SimulateIncomingMessage,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Simulates an incoming WhatsApp reply from a shop owner.
@@ -236,6 +242,7 @@ def simulate_incoming_whatsapp(
             business_id=payload.business_id,
             shop_name=payload.shop_name,
             dry_run=True,
+            owner_id=current_user.id,
         )
     )
 
@@ -293,6 +300,7 @@ def start_whatsapp_conversation(
     shop_name: str = Query("Local Shop"),
     business_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Initializes or retrieves the active WhatsApp conversation thread.
@@ -303,6 +311,7 @@ def start_whatsapp_conversation(
         phone_number=phone_number,
         shop_name=shop_name,
         business_id=business_id,
+        owner_id=current_user.id,
     )
 
     messages = (
@@ -366,6 +375,7 @@ def start_whatsapp_conversation(
 )
 def list_whatsapp_conversations(
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Lists all WhatsApp conversation threads
@@ -373,7 +383,7 @@ def list_whatsapp_conversations(
     """
 
     convs = (
-        db.query(WhatsAppConversation)
+        own_conversations(db, current_user)
         .order_by(
             WhatsAppConversation.last_message_at.desc()
         )
@@ -446,26 +456,14 @@ def list_whatsapp_conversations(
 def get_whatsapp_conversation(
     conversation_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Retrieves full message history and status
     for a WhatsApp conversation.
     """
 
-    conv = (
-        db.query(WhatsAppConversation)
-        .filter(
-            WhatsAppConversation.id
-            == conversation_id
-        )
-        .first()
-    )
-
-    if not conv:
-        raise HTTPException(
-            status_code=404,
-            detail="WhatsApp conversation not found",
-        )
+    conv = owned_conversation_or_404(db, conversation_id, current_user)
 
     messages = (
         db.query(WhatsAppMessage)
@@ -530,11 +528,14 @@ def send_manual_whatsapp_reply(
     conversation_id: int,
     payload: ManualMessageCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Sends a manual response from Lexon IT Team
     to the shop owner over WhatsApp.
     """
+
+    owned_conversation_or_404(db, conversation_id, current_user)
 
     try:
 
@@ -577,10 +578,13 @@ def toggle_whatsapp_ai_state(
     conversation_id: int,
     payload: ToggleAISchema,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Toggles the Auto AI Bot switch.
     """
+
+    owned_conversation_or_404(db, conversation_id, current_user)
 
     try:
 
@@ -656,10 +660,13 @@ def toggle_takeover(
     conversation_id: int,
     payload: ToggleTakeoverSchema,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Toggles human takeover mode.
     """
+
+    owned_conversation_or_404(db, conversation_id, current_user)
 
     try:
 
@@ -734,10 +741,13 @@ def toggle_takeover(
 def mark_read(
     conversation_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Marks all messages as read and resets unread badge.
     """
+
+    owned_conversation_or_404(db, conversation_id, current_user)
 
     try:
 
@@ -772,10 +782,13 @@ def update_status(
     conversation_id: int,
     payload: UpdateLeadStatusSchema,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Updates the lead status of a conversation.
     """
+
+    owned_conversation_or_404(db, conversation_id, current_user)
 
     try:
 
@@ -848,10 +861,13 @@ def update_requirements(
     conversation_id: int,
     payload: UpdateRequirementsSchema,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Saves and updates extracted business requirements.
     """
+
+    owned_conversation_or_404(db, conversation_id, current_user)
 
     try:
 
@@ -925,6 +941,7 @@ def get_whatsapp_stats(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Returns calculated WhatsApp communication
@@ -948,6 +965,7 @@ def get_whatsapp_stats(
         period=period,
         start_date=start_date,
         end_date=end_date,
+        owner_id=current_user.id,
     )
 
 
@@ -962,6 +980,7 @@ def track_outbound_contact(
     business_id: Optional[int] = Query(None),
     message_text: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Records an outbound WhatsApp interaction
@@ -978,6 +997,7 @@ def track_outbound_contact(
         shop_name=shop_name,
         business_id=business_id,
         message_text=message_text,
+        owner_id=current_user.id,
     )
 
     return {
@@ -1005,6 +1025,7 @@ def record_shop_reply(
         "INTERESTED"
     ),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Records an incoming WhatsApp reply
@@ -1025,6 +1046,7 @@ def record_shop_reply(
         sender_name=shop_name or "Shop Owner",
         shop_name=shop_name,
         dry_run=True,
+        owner_id=current_user.id,
     )
 
     if lead_status:
@@ -1069,12 +1091,13 @@ def record_shop_reply(
 # 16. RESET WHATSAPP HISTORY
 # =============================================================================
 
-@router.delete("/reset", dependencies=[Depends(require_admin)])
+@router.delete("/reset")
 def reset_history(
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
-    Resets all test WhatsApp logs and conversations.
+    Deletes the signed-in account's own WhatsApp conversations and logs (nobody else's).
     """
 
     from app.services.whatsapp_service import (
@@ -1082,22 +1105,22 @@ def reset_history(
     )
 
     return reset_whatsapp_history(
-        db=db
+        db=db,
+        owner_id=current_user.id,
     )
 
 
-@router.delete("/messages/{message_id}", dependencies=[Depends(require_admin)])
+@router.delete("/messages/{message_id}")
 def delete_single_message(
     message_id: int,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Deletes an individual WhatsApp message from the communications log.
     If the conversation has no remaining messages, also removes the empty conversation.
     """
-    msg = db.query(WhatsAppMessage).filter(WhatsAppMessage.id == message_id).first()
-    if not msg:
-        raise HTTPException(status_code=404, detail="Message not found")
+    msg = owned_message_or_404(db, message_id, current_user)  # only your own messages
 
     conv_id = msg.conversation_id
     db.delete(msg)
@@ -1243,6 +1266,7 @@ def test_whatsapp_cloud_message(
 def broadcast_all_whatsapp_alias(
     payload: dict,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Alias for /api/ai-whatsapp/broadcast-all.
@@ -1250,4 +1274,4 @@ def broadcast_all_whatsapp_alias(
     """
     from app.routers.ai_whatsapp_hub import broadcast_all_whatsapp_shops, BulkWhatsAppBroadcastSchema
     schema = BulkWhatsAppBroadcastSchema(**payload)
-    return broadcast_all_whatsapp_shops(payload=schema, db=db)
+    return broadcast_all_whatsapp_shops(payload=schema, db=db, current_user=current_user)

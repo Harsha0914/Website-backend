@@ -31,7 +31,6 @@ def _auth(token):
     ("post", "/api/whatsapp/simulate-incoming"),
     ("post", "/api/whatsapp/settings/test"),
     ("get", "/api/ai-whatsapp/test-flyer-send"),
-    ("delete", "/api/whatsapp/reset"),
     ("put", "/api/whatsapp/settings"),
     ("get", "/api/whatsapp/conversations"),
 ])
@@ -41,8 +40,6 @@ def test_whatsapp_routes_reject_anonymous(client, method, path):
 
 
 @pytest.mark.parametrize("method,path", [
-    ("delete", "/api/whatsapp/reset"),
-    ("delete", "/api/whatsapp/messages/1"),
     ("get", "/api/whatsapp/settings"),
     ("put", "/api/whatsapp/settings"),
     ("post", "/api/whatsapp/sync"),

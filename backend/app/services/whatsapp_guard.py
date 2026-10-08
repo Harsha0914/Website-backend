@@ -66,20 +66,38 @@ def is_valid_phone(phone: Optional[str]) -> bool:
 
 
 # ── Send gate ────────────────────────────────────────────────────────────────
-def find_conversation_by_phone(db: Session, phone: str) -> Optional[WhatsAppConversation]:
+_ANY_OWNER = object()
+
+
+def find_conversation_by_phone(db: Session, phone: str, owner_id=_ANY_OWNER) -> Optional[WhatsAppConversation]:
+    """
+    The conversation for a phone number. Pass owner_id to look only inside ONE account's chats (the
+    normal case: an account must never see another account's chat). Without it the search spans all
+    accounts, which is only for the global opt-out check.
+    """
     key = phone_key(phone)
     if len(key) < 10:
         return None
-    return (
-        db.query(WhatsAppConversation)
-        .filter(WhatsAppConversation.phone_number.like(f"%{key}"))
-        .first()
-    )
+    query = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone_number.like(f"%{key}"))
+    if owner_id is not _ANY_OWNER:
+        query = query.filter(WhatsAppConversation.owner_id == owner_id)
+    return query.first()
 
 
 def is_opted_out(db: Session, phone: str) -> bool:
-    conv = find_conversation_by_phone(db, phone)
-    return bool(conv and (conv.opt_out or conv.lead_status == "DO_NOT_CONTACT"))
+    """A shop that said STOP is blocked for EVERY account (that is the shop's right, and it is not shown to anyone)."""
+    key = phone_key(phone)
+    if len(key) < 10:
+        return False
+    return (
+        db.query(WhatsAppConversation.id)
+        .filter(
+            WhatsAppConversation.phone_number.like(f"%{key}"),
+            (WhatsAppConversation.opt_out == True) | (WhatsAppConversation.lead_status == "DO_NOT_CONTACT"),  # noqa: E712
+        )
+        .first()
+        is not None
+    )
 
 
 def outbound_count_last_24h(db: Session) -> int:
@@ -99,6 +117,7 @@ def can_message(
     db: Session,
     phone: Optional[str],
     *,
+    owner_id=_ANY_OWNER,
     check_cooldown: bool = False,
     batch_sent_so_far: int = 0,
 ) -> Tuple[bool, Optional[str]]:
@@ -122,7 +141,7 @@ def can_message(
 
     if check_cooldown:
         days = int(settings.WHATSAPP_REPEAT_COOLDOWN_DAYS or 0)
-        conv = find_conversation_by_phone(db, phone)
+        conv = find_conversation_by_phone(db, phone, owner_id)  # cooldown is per account: it never reveals another account's activity
         if days > 0 and conv:
             since = datetime.utcnow() - timedelta(days=days)
             recent = (

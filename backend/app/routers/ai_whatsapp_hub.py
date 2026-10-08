@@ -51,6 +51,8 @@ from app.services.ai_sales_agent import (
     generate_suggested_replies,
 )
 
+from app.services.whatsapp_access import owned_conversation_or_404, own_conversations  # noqa: E402
+
 router = APIRouter(
     prefix="/api/ai-whatsapp",
     tags=["AI WhatsApp Sales & Conversation Hub"],
@@ -118,9 +120,10 @@ class AISettingsUpdateSchema(BaseModel):
 def get_conversations(
     filter_tab: str = Query("all", description="all, unread, ai_active, human_assigned, interested, hot_leads, not_interested, needs_follow_up"),
     search: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    query = db.query(WhatsAppConversation)
+    query = own_conversations(db, current_user)  # only the signed-in account's chats
 
     if search and search.strip():
         s = f"%{search.strip()}%"
@@ -198,10 +201,8 @@ def get_conversations(
 
 # ─── 2. Conversation Details & Message History ──────────────────────────────
 @router.get("/conversations/{conversation_id}")
-def get_conversation_detail(conversation_id: int, db: Session = Depends(get_db)):
-    conv = db.query(WhatsAppConversation).filter(WhatsAppConversation.id == conversation_id).first()
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+def get_conversation_detail(conversation_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    conv = owned_conversation_or_404(db, conversation_id, current_user)
 
     messages = (
         db.query(WhatsAppMessage)
@@ -273,8 +274,10 @@ def get_conversation_detail(conversation_id: int, db: Session = Depends(get_db))
 def send_message(
     conversation_id: int,
     payload: MessageSendSchema,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
+    owned_conversation_or_404(db, conversation_id, current_user)
     try:
         msg = send_manual_operator_message(
             db=db,
@@ -300,8 +303,10 @@ def send_message(
 def toggle_ai(
     conversation_id: int,
     payload: ToggleAISchema,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
+    owned_conversation_or_404(db, conversation_id, current_user)
     try:
         conv = toggle_whatsapp_ai_bot(db=db, conversation_id=conversation_id, enabled=payload.enabled)
         return {
@@ -318,8 +323,10 @@ def toggle_ai(
 def takeover_conversation(
     conversation_id: int,
     payload: TakeoverSchema,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
+    owned_conversation_or_404(db, conversation_id, current_user)
     try:
         conv = toggle_human_takeover(db=db, conversation_id=conversation_id, takeover=payload.takeover)
         return {
@@ -335,10 +342,8 @@ def takeover_conversation(
 
 # ─── 5. AI Suggested Replies ─────────────────────────────────────────────────
 @router.get("/conversations/{conversation_id}/suggested-replies")
-def get_ai_suggested_replies(conversation_id: int, db: Session = Depends(get_db)):
-    conv = db.query(WhatsAppConversation).filter(WhatsAppConversation.id == conversation_id).first()
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+def get_ai_suggested_replies(conversation_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    conv = owned_conversation_or_404(db, conversation_id, current_user)
 
     last_cust_msg = (
         db.query(WhatsAppMessage)
@@ -357,8 +362,10 @@ def get_ai_suggested_replies(conversation_id: int, db: Session = Depends(get_db)
 def add_follow_up(
     conversation_id: int,
     payload: FollowUpCreateSchema,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
+    owned_conversation_or_404(db, conversation_id, current_user)
     try:
         dt = datetime.fromisoformat(payload.scheduled_for.replace("Z", "+00:00")).replace(tzinfo=None)
     except Exception:
@@ -380,7 +387,8 @@ def add_follow_up(
 
 # ─── 7. Mark As Read ─────────────────────────────────────────────────────────
 @router.post("/conversations/{conversation_id}/read")
-def mark_read(conversation_id: int, db: Session = Depends(get_db)):
+def mark_read(conversation_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    owned_conversation_or_404(db, conversation_id, current_user)
     conv = mark_conversation_as_read(db=db, conversation_id=conversation_id)
     return {"status": "success", "unread_count": conv.unread_count}
 
@@ -391,13 +399,15 @@ def get_analytics(
     period: str = Query("today", description="today, yesterday, 7days, 30days, custom"),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     data = get_comprehensive_whatsapp_analytics(
         db=db,
         period=period,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        owner_id=current_user.id,
     )
     return data
 
@@ -488,7 +498,7 @@ def update_settings(payload: AISettingsUpdateSchema, db: Session = Depends(get_d
 
 # ─── 11. Developer / Live Message Simulator ──────────────────────────────────
 @router.post("/simulate-incoming")
-def simulate_incoming(payload: SimulateMessageSchema, db: Session = Depends(get_db)):
+def simulate_incoming(payload: SimulateMessageSchema, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     inbound, outbound, is_replied = process_incoming_whatsapp_message(
         db=db,
         phone_number=payload.phone_number,
@@ -496,6 +506,7 @@ def simulate_incoming(payload: SimulateMessageSchema, db: Session = Depends(get_
         shop_name=payload.shop_name or "Local Store",
         business_id=payload.business_id,
         dry_run=True,
+        owner_id=current_user.id,
     )
 
     return {
@@ -575,7 +586,7 @@ def test_flyer_send(to_phone: str = Query(..., description="Phone number to test
 
 # ─── 12. Bulk AI WhatsApp Broadcast to Multiple Shops ────────────────────────
 @router.post("/broadcast-all")
-def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Session = Depends(get_db)):
+def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """
     Sends a personalised website pitch to multiple shops.
 
@@ -645,7 +656,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
             continue
         seen_phones.add(norm_phone)
 
-        allowed, reason = can_message(db, norm_phone, check_cooldown=True)
+        allowed, reason = can_message(db, norm_phone, owner_id=current_user.id, check_cooldown=True)
         if not allowed:
             _skip(reason or "blocked")
             continue
@@ -665,6 +676,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                 phone_number=norm_phone,
                 shop_name=s_name,
                 business_id=b_id,
+                owner_id=current_user.id,
             )
 
             # A person is already handling this lead: don't let a cold pitch cut across them.

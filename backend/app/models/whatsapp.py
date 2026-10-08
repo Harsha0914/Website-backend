@@ -3,7 +3,7 @@ from datetime import datetime
 # pyrefly: ignore [missing-import]
 from sqlalchemy import (
     Column, Integer, String, DateTime, ForeignKey, Text,
-    Boolean, Enum as SAEnum, Float, JSON
+    Boolean, Enum as SAEnum, Float, JSON, UniqueConstraint
 )
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import relationship
@@ -47,10 +47,16 @@ class LeadStatus(str, enum.Enum):
 
 class WhatsAppConversation(Base):
     __tablename__ = "whatsapp_conversations"
+    # One chat per (account, shop number): two accounts can each message the same shop without ever
+    # seeing each other's conversation.
+    __table_args__ = (UniqueConstraint("owner_id", "phone_number", name="uq_whatsapp_owner_phone"),)
 
     id = Column(Integer, primary_key=True, index=True)
+    # The account that owns this chat. Every read and write is filtered by it. NULL = nobody's
+    # (e.g. an unsolicited message from a number no account ever contacted); such chats are never shown.
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     business_id = Column(Integer, ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True, index=True)
-    phone_number = Column(String(50), nullable=False, index=True, unique=True)
+    phone_number = Column(String(50), nullable=False, index=True)
     shop_name = Column(String(255), nullable=False)
     owner_name = Column(String(255), nullable=True)
     
