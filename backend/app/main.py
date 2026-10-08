@@ -36,6 +36,11 @@ from app.config import _DB_PATH  # noqa: E402
 migrate_whatsapp_ownership(engine, Base.metadata)  # older databases: chats become per-account
 seed_empty_database(engine, Base.metadata, _DB_PATH)
 
+# Chats are mirrored to MongoDB (when configured) so they survive restarts; copy what already exists once.
+from app.services import chat_durability  # noqa: E402  (importing installs the change listeners)
+from app.database import SessionLocal  # noqa: E402
+chat_durability.start_backfill(SessionLocal)
+
 def _ensure_sqlite_columns():
     try:
         # Only run on SQLite

@@ -2116,6 +2116,11 @@ def reset_whatsapp_history(
             db.query(WhatsAppConversation).filter(WhatsAppConversation.id.in_(ids)).delete(synchronize_session=False)
 
         db.commit()
+        try:
+            from app.services.chat_durability import forget_owner
+            forget_owner(db, owner_id)
+        except Exception:
+            pass
 
         return {
             "status": "success",

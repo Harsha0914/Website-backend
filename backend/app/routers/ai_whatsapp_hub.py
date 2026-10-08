@@ -123,6 +123,8 @@ def get_conversations(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    from app.services.chat_durability import restore_for_user
+    restore_for_user(db, current_user)  # after a restart, bring this account's chats back from MongoDB
     query = own_conversations(db, current_user)  # only the signed-in account's chats
 
     if search and search.strip():

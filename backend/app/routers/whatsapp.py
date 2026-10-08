@@ -382,6 +382,9 @@ def list_whatsapp_conversations(
     sorted by last activity.
     """
 
+    from app.services.chat_durability import restore_for_user
+    restore_for_user(db, current_user)  # after a restart, bring this account's chats back from MongoDB
+
     convs = (
         own_conversations(db, current_user)
         .order_by(
