@@ -36,7 +36,7 @@ import WhatsAppSentConfirmToast from './components/common/WhatsAppSentConfirmToa
 /**
  * Root entry point handler:
  * When users open localhost:5173 or the Vercel link directly:
- * - If not authenticated: navigates directly to /login
+ * - If not authenticated: shows the landing page (its buttons lead to /login and /register)
  * - If authenticated as ADMIN: navigates to /admin/dashboard
  * - If authenticated as regular USER: navigates to /dashboard
  */
@@ -44,7 +44,7 @@ function RootRoute() {
   const { isAuthenticated, user } = useAuthStore();
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <LandingPage />;
   }
 
   if (user?.role === 'ADMIN') {
@@ -67,7 +67,7 @@ export default function App() {
       <Route path="/" element={<RootRoute />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/landing" element={<LandingPage />} />
+      <Route path="/landing" element={<Navigate to="/" replace />} />
 
 
 

@@ -1,569 +1,466 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import {
-  MessageCircle,
-  Sparkles,
-  Send,
-  CheckCircle2,
-  X,
-  Bot,
-  Store,
-  Phone,
-  Layers,
-  ArrowRight,
-  AlertCircle,
-  RefreshCw,
-  CheckSquare,
-  Square,
-  Zap,
+  X, Check, ArrowLeft, Search, Loader2, Send, Clock, AlertCircle, CheckCircle2, XCircle,
+  MinusCircle, Pause, RotateCcw, MessageCircle, Play,
 } from 'lucide-react';
-import { broadcastWhatsAppToAllShops, formatPhoneNumber, launchWhatsAppApp } from '../../services/whatsappService';
+import { sendDirectWhatsAppPitch, formatPhoneNumber } from '../../services/whatsappService';
+import { WHATSAPP_TEMPLATES, DEFAULT_TEMPLATE_ID, getTemplate, fillTemplate } from '../../services/whatsappTemplates';
 
-const PRESET_TEMPLATES = [
-  {
-    id: 'lexon_official',
-    name: '🌟 Lexon IT Official Website & App Pitch',
-    badge: 'Official Template',
-    text: `Hello {shop_name},\n\nThis is Lexon IT. We help businesses grow online by building professional websites, web applications, and mobile apps tailored to their needs.\n\nWe noticed that {shop_name} doesn’t currently have a website. Today, customers often search online before choosing a business or service. A professional online presence can help you showcase your products or services, share important information, build trust, and make it easier for customers to contact you — 24/7.\n\nWhether you need a simple website, an online booking or ordering system, a custom web application, or a mobile app, our team can build it for you at an affordable price.
+const GAP_BETWEEN_MESSAGES_MS = 2000; // a short pause between contacts keeps WhatsApp happy
+const SECONDS_PER_CONTACT = 4;        // rough, for the "about N minutes left" hint
+const DAILY_LIMIT_HINT = 200;
 
-https://easybillbro.com/`,
-  },
-];
+const shopKey = (s, i) => String(s.id ?? s.external_place_id ?? `${s.name}_${i}`);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const BATCH_SIZE = 15;
+const STATUS = {
+  pending: { label: 'Waiting', color: 'var(--ui-muted)', Icon: Clock },
+  sending: { label: 'Sending now', color: 'var(--ui-primary-text)', Icon: Loader2 },
+  sent: { label: 'Sent', color: 'var(--ui-success)', Icon: CheckCircle2 },
+  test: { label: 'Saved, not sent (test mode)', color: 'var(--ui-warning)', Icon: MinusCircle },
+  skipped: { label: 'Skipped', color: 'var(--ui-warning)', Icon: MinusCircle },
+  failed: { label: 'Failed', color: 'var(--ui-danger)', Icon: XCircle },
+};
 
-export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = [], onBroadcastComplete }) {
-  const navigate = useNavigate();
-
-  const [selectedBatchIndex, setSelectedBatchIndex] = useState(0);
-  const [selectedShopIds, setSelectedShopIds] = useState(() =>
-    new Set(shops.slice(0, BATCH_SIZE).map((s, idx) => s.id || `shop_${idx}`))
+function StatusMark({ status }) {
+  const { label, color, Icon } = STATUS[status] || STATUS.pending;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm font-semibold shrink-0" style={{ color }}>
+      <Icon className={`h-4 w-4 ${status === 'sending' ? 'animate-spin' : ''}`} aria-hidden="true" />
+      {label}
+    </span>
   );
-  const [selectedTemplateId, setSelectedTemplateId] = useState('lexon_official');
-  const [messageText, setMessageText] = useState(PRESET_TEMPLATES[0].text);
-  const [autoAIEnabled, setAutoAIEnabled] = useState(true);
+}
 
-  // Sending progress states
-  const [isSending, setIsSending] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentSendingName, setCurrentSendingName] = useState('');
-  const [isComplete, setIsComplete] = useState(false);
-  const [sendResult, setSendResult] = useState(null);
-  const [errorMsg, setErrorMsg] = useState(null);
+/**
+ * Send one message to many shops, one after another.
+ *   1. Choose the shops (any number).   2. Pick a template and check the text.   3. Watch it send.
+ * Each shop is sent to only after the previous one has finished, and every shop shows its own status.
+ */
+export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = [], onBroadcastComplete, onlyNoWebsiteDefault = false }) {
+  const [step, setStep] = useState('select'); // 'select' | 'message' | 'send'
+  const [selected, setSelected] = useState(() => new Set());
+  const [query, setQuery] = useState('');
+  const [onlyNoSite, setOnlyNoSite] = useState(onlyNoWebsiteDefault);
+  const [firstN, setFirstN] = useState('10');
 
-  const totalBatches = Math.max(1, Math.ceil(shops.length / BATCH_SIZE));
+  const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID);
+  const [message, setMessage] = useState(getTemplate(DEFAULT_TEMPLATE_ID).body);
+  const [attachFlyer, setAttachFlyer] = useState(getTemplate(DEFAULT_TEMPLATE_ID).includeFlyer);
 
-  // Sync selected shops (defaulting to the first batch of 15) when modal opens
-  React.useEffect(() => {
-    if (isOpen) {
-      setSelectedBatchIndex(0);
-      setSelectedShopIds(new Set(shops.slice(0, BATCH_SIZE).map((s, idx) => s.id || `shop_${idx}`)));
-      setIsComplete(false);
-      setProgress(0);
-      setSendResult(null);
-      setErrorMsg(null);
+  const [queue, setQueue] = useState([]);
+  const [running, setRunning] = useState(false);
+  const [haltNote, setHaltNote] = useState('');
+  const stopRef = useRef(false);
+  const queueRef = useRef([]);
+  const currentRowRef = useRef(null);
+  const reportedRef = useRef(false);
+
+  // Only shops with a real phone number can be messaged.
+  const contacts = useMemo(() => shops
+    .map((s, i) => ({ shop: s, key: shopKey(s, i), name: s.name || s.shop_name || 'Shop', phone: formatPhoneNumber(s.phone || s.phone_number) }))
+    .filter((c) => c.phone), [shops]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return contacts.filter((c) => {
+      if (onlyNoSite && !(c.shop.website_status === 'NO_WEBSITE' || c.shop.website_status === 'WEBSITE_UNREACHABLE')) return false;
+      if (!q) return true;
+      return c.name.toLowerCase().includes(q) || c.phone.includes(q.replace(/\D/g, '') || '\u0000');
+    });
+  }, [contacts, query, onlyNoSite]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    stopRef.current = false;
+    reportedRef.current = false;
+    setStep('select');
+    setSelected(new Set());
+    setQuery('');
+    setOnlyNoSite(onlyNoWebsiteDefault);
+    setFirstN('10');
+    setQueue([]);
+    queueRef.current = [];
+    setRunning(false);
+    setHaltNote('');
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      stopRef.current = true; // closing the page or dialog stops any sending in progress
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape' && !running) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, running, onClose]);
+
+  const currentIndex = queue.findIndex((q) => q.status === 'sending');
+  useEffect(() => {
+    currentRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [currentIndex]);
+
+  const counts = useMemo(() => {
+    const c = { pending: 0, sending: 0, sent: 0, test: 0, skipped: 0, failed: 0 };
+    queue.forEach((q) => { c[q.status] = (c[q.status] || 0) + 1; });
+    return c;
+  }, [queue]);
+
+  const total = queue.length;
+  const doneCount = counts.sent + counts.test + counts.skipped + counts.failed;
+
+  const setQueueBoth = (next) => { queueRef.current = next; setQueue(next); };
+
+  const runQueue = useCallback(async () => {
+    stopRef.current = false;
+    setHaltNote('');
+    setRunning(true);
+    const patch = (key, p) => setQueueBoth(queueRef.current.map((x) => (x.key === key ? { ...x, ...p } : x)));
+    const todo = queueRef.current.filter((x) => x.status === 'pending').map((x) => x.key);
+
+    for (let n = 0; n < todo.length; n += 1) {
+      if (stopRef.current) break;
+      const key = todo[n];
+      const item = queueRef.current.find((x) => x.key === key);
+      patch(key, { status: 'sending', note: '' });
+      try {
+        const res = await sendDirectWhatsAppPitch(item.shop, fillTemplate(message, item.name), item.phone, attachFlyer, { silent: true });
+        if (res?.status === 'failed') throw new Error(res.error || 'The message could not be sent');
+        patch(key, { status: res?.status === 'simulated' ? 'test' : 'sent', note: '' });
+      } catch (err) {
+        if (err?.skipped) {
+          patch(key, { status: 'skipped', note: String(err.message || '').replace('Message not sent: ', '') });
+          if (err.reason === 'daily_limit_reached') {
+            setHaltNote('The daily sending limit has been reached, so the rest are still waiting. Continue tomorrow.');
+            break;
+          }
+        } else {
+          const detail = err?.response?.data?.detail;
+          patch(key, { status: 'failed', note: (typeof detail === 'string' && detail) || err?.message || 'The message could not be sent' });
+        }
+      }
+      if (n < todo.length - 1 && !stopRef.current) await sleep(GAP_BETWEEN_MESSAGES_MS);
     }
-  }, [isOpen, shops]);
+    setRunning(false);
+  }, [message, attachFlyer]);
+
+  // Tell the parent once, when everything that was going to be sent has finished.
+  useEffect(() => {
+    if (step !== 'send' || running || !total || reportedRef.current) return;
+    if (counts.pending === 0 && counts.sending === 0) {
+      reportedRef.current = true;
+      if (onBroadcastComplete) onBroadcastComplete({ sent: counts.sent + counts.test, failed: counts.failed, skipped: counts.skipped });
+    }
+  }, [step, running, total, counts, onBroadcastComplete]);
+
+  const startSending = () => {
+    const chosen = contacts.filter((c) => selected.has(c.key));
+    reportedRef.current = false;
+    setQueueBoth(chosen.map((c) => ({ ...c, status: 'pending', note: '' })));
+    setStep('send');
+    setTimeout(runQueue, 0);
+  };
+
+  const retryFailed = () => {
+    reportedRef.current = false;
+    setQueueBoth(queueRef.current.map((x) => (x.status === 'failed' ? { ...x, status: 'pending', note: '' } : x)));
+    setTimeout(runQueue, 0);
+  };
+
+  const continueSending = () => { setTimeout(runQueue, 0); };
+
+  const toggle = (key) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const selectFirst = (n) => setSelected(new Set(visible.slice(0, n).map((c) => c.key)));
+  const selectAllVisible = () => setSelected((prev) => new Set([...prev, ...visible.map((c) => c.key)]));
+  const allVisibleSelected = visible.length > 0 && visible.every((c) => selected.has(c.key));
+
+  const pickTemplate = (t) => {
+    setTemplateId(t.id);
+    setMessage(t.body);
+    setAttachFlyer(t.includeFlyer);
+  };
 
   if (!isOpen) return null;
 
-  const handleSelectBatch = (batchIdx) => {
-    setSelectedBatchIndex(batchIdx);
-    const start = batchIdx * BATCH_SIZE;
-    const batchShops = shops.slice(start, start + BATCH_SIZE);
-    setSelectedShopIds(new Set(batchShops.map((s, idx) => s.id || `shop_${start + idx}`)));
-  };
+  const selectedCount = selected.size;
+  const firstSelected = contacts.find((c) => selected.has(c.key));
+  const previewName = firstSelected?.name || 'Shop name';
+  const minutesLeft = Math.max(1, Math.ceil(((counts.pending + counts.sending) * SECONDS_PER_CONTACT) / 60));
+  const current = queue.find((q) => q.status === 'sending');
+  const finished = step === 'send' && !running && counts.pending === 0 && counts.sending === 0;
+  const canClose = !running;
+  const stepIndex = { select: 1, message: 2, send: 3 }[step];
 
-  const handleSelectNextBatch = () => {
-    const nextIdx = (selectedBatchIndex + 1) % totalBatches;
-    handleSelectBatch(nextIdx);
-  };
-
-  const toggleSelectShop = (shopId) => {
-    setSelectedShopIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(shopId)) {
-        next.delete(shopId);
-      } else {
-        next.add(shopId);
-      }
-      return next;
-    });
-  };
-
-  const handleSelectAll = () => {
-    if (selectedShopIds.size === shops.length) {
-      setSelectedShopIds(new Set());
-    } else {
-      setSelectedShopIds(new Set(shops.map((s, idx) => s.id || `shop_${idx}`)));
-    }
-  };
-
-  const handleTemplateChange = (tmpl) => {
-    setSelectedTemplateId(tmpl.id);
-    setMessageText(tmpl.text);
-  };
-
-  const insertTag = (tag) => {
-    setMessageText((prev) => `${prev} ${tag}`);
-  };
-
-  const targetShops = shops.filter((s, idx) => selectedShopIds.has(s.id || `shop_${idx}`));
-
-  const handleExecuteBroadcast = async () => {
-    if (targetShops.length === 0) return;
-
-    setIsSending(true);
-    setErrorMsg(null);
-    setProgress(15);
-    setCurrentSendingName(targetShops[0]?.name || 'Initializing AI dispatch...');
-
-    try {
-      // Small visual timer for progress display
-      const timer = setInterval(() => {
-        setProgress((old) => (old < 85 ? old + Math.floor(Math.random() * 15) + 10 : old));
-      }, 300);
-
-      const result = await broadcastWhatsAppToAllShops({
-        shops: targetShops,
-        customMessage: messageText,
-        autoAIEnabled: autoAIEnabled,
-      });
-
-      clearInterval(timer);
-      setProgress(100);
-      setSendResult(result);
-      setIsComplete(true);
-
-      if (onBroadcastComplete) {
-        onBroadcastComplete(result);
-      }
-    } catch (err) {
-      console.error('Broadcast failed:', err);
-      setErrorMsg(err.response?.data?.detail || err.message || 'Failed to dispatch bulk WhatsApp messages.');
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isSending) onClose();
-      }}
+      className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ zIndex: 9999, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget && canClose) onClose(); }}
     >
-      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bulk-wa-title"
+        className="ui-card w-full flex flex-col sm:max-w-2xl"
+        style={{ maxHeight: '94vh', height: step === 'message' ? 'auto' : '94vh', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, boxShadow: 'var(--ui-shadow-lg)' }}
+      >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-indigo-500/10">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/25">
-              <MessageCircle className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                  1-Click AI WhatsApp Broadcast
-                </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/50 dark:border-emerald-800">
-                  Auto AI Bot Active
+        <div className="px-5 py-4 border-b flex items-start gap-3" style={{ borderColor: 'var(--ui-border)' }}>
+          {step === 'message' && (
+            <button type="button" onClick={() => setStep('select')} className="ui-btn ui-btn-ghost ui-btn-sm" aria-label="Back to shops">
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
+            <h2 id="bulk-wa-title" className="font-bold text-base" style={{ color: 'var(--ui-text)' }}>
+              {step === 'select' && 'Send to several shops'}
+              {step === 'message' && 'Choose and check the message'}
+              {step === 'send' && (finished ? 'Finished' : 'Sending messages')}
+            </h2>
+            <p className="text-sm" style={{ color: 'var(--ui-muted)' }}>Step {stepIndex} of 3 · one shop at a time</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={!canClose} className="ui-btn ui-btn-ghost ui-btn-sm" aria-label="Close" title={canClose ? 'Close' : 'Stop sending first'}>
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        {/* ───────── Step 1: choose shops ───────── */}
+        {step === 'select' && (
+          <>
+            <div className="px-5 pt-4 space-y-3 border-b pb-3" style={{ borderColor: 'var(--ui-border)' }}>
+              <div className="relative">
+                <label htmlFor="bulk-search" className="sr-only">Search shops</label>
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--ui-muted)' }} aria-hidden="true" />
+                <input id="bulk-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by shop name or number" className="ui-input" style={{ paddingLeft: 40 }} autoComplete="off" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className={`ui-chip ${onlyNoSite ? 'ui-chip-active' : ''}`} aria-pressed={onlyNoSite} onClick={() => setOnlyNoSite((v) => !v)}>
+                  Only shops without a website
+                </button>
+                <button type="button" className="ui-chip" onClick={allVisibleSelected ? () => setSelected(new Set()) : selectAllVisible}>
+                  {allVisibleSelected ? 'Clear all' : `Select all ${visible.length}`}
+                </button>
+                <span className="inline-flex items-center gap-1.5">
+                  <label htmlFor="bulk-firstn" className="text-sm" style={{ color: 'var(--ui-text-2)' }}>or first</label>
+                  <input
+                    id="bulk-firstn" type="number" min="1" max={visible.length || 1} value={firstN}
+                    onChange={(e) => setFirstN(e.target.value)}
+                    className="ui-input" style={{ width: 78, minHeight: 36, padding: '4px 10px' }}
+                  />
+                  <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => selectFirst(Math.max(1, parseInt(firstN, 10) || 1))}>Select</button>
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Outreach website pitch to <strong className="text-slate-900 dark:text-white">{shops.length}</strong> shops without a website
+              <p className="text-sm" style={{ color: 'var(--ui-text-2)' }} aria-live="polite">
+                <strong style={{ color: 'var(--ui-text)' }}>{selectedCount}</strong> selected · {visible.length} shown · {contacts.length} shops have a phone number
               </p>
             </div>
-          </div>
-          {!isSending && (
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-        </div>
 
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {isComplete ? (
-            /* Complete State */
-            <div className="text-center py-6 space-y-5 animate-in zoom-in-95 duration-200">
-              <div className="w-16 h-16 rounded-3xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-inner border border-emerald-300/40">
-                <CheckCircle2 className="w-10 h-10" />
-              </div>
+            <ul className="flex-1 overflow-y-auto min-h-0" role="list">
+              {visible.length === 0 && (
+                <li className="p-8 text-center text-sm" style={{ color: 'var(--ui-muted)' }}>
+                  {contacts.length === 0 ? 'None of these shops has a phone number we can message.' : 'No shop matches. Try clearing the search or the filter.'}
+                </li>
+              )}
+              {visible.map((c) => {
+                const checked = selected.has(c.key);
+                const noSite = c.shop.website_status === 'NO_WEBSITE' || c.shop.website_status === 'WEBSITE_UNREACHABLE';
+                return (
+                  <li key={c.key} className="border-b" style={{ borderColor: 'var(--ui-border)' }}>
+                    <label className="flex items-center gap-3 px-5 py-3 cursor-pointer" style={{ background: checked ? 'var(--ui-primary-soft)' : 'transparent' }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggle(c.key)} className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-sm truncate" style={{ color: 'var(--ui-text)' }}>{c.name}</span>
+                        <span className="block text-xs" style={{ color: 'var(--ui-muted)' }}>+{c.phone}</span>
+                      </span>
+                      <span className={`ui-badge ${noSite ? 'ui-badge-danger' : 'ui-badge-success'} shrink-0`}>{noSite ? 'No website' : 'Has website'}</span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="px-5 py-4 border-t flex flex-wrap items-center justify-between gap-2" style={{ borderColor: 'var(--ui-border)' }}>
+              <p className="text-sm" style={{ color: selectedCount > DAILY_LIMIT_HINT ? 'var(--ui-warning)' : 'var(--ui-muted)' }}>
+                {selectedCount > DAILY_LIMIT_HINT ? `The daily limit is about ${DAILY_LIMIT_HINT} messages; the rest will wait.` : 'Shops contacted in the last 7 days are skipped automatically.'}
+              </p>
+              <button type="button" disabled={selectedCount === 0} onClick={() => setStep('message')} className="ui-btn ui-btn-primary">
+                Next: choose the message ({selectedCount})
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ───────── Step 2: message ───────── */}
+        {step === 'message' && (
+          <>
+            <div className="px-5 py-4 space-y-4 overflow-y-auto">
               <div>
-                <h4 className="text-xl font-black text-slate-900 dark:text-white">
-                  Outreach Broadcast Dispatched!
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
-                  Successfully initiated AI website outreach messages to{' '}
-                  <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{sendResult?.total_sent ?? 0} shops</strong>.
-                  The AI Sales Bot will automatically handle all incoming replies!
-                </p>
-              </div>
-
-              {/* Status Box */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 max-w-md mx-auto text-left space-y-2">
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-slate-300">Total Targeted:</span>
-                  <span className="font-bold text-slate-900 dark:text-white">{sendResult?.total_targeted || targetShops.length}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-slate-300">Outreach Delivered:</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">{sendResult?.total_sent ?? 0}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-slate-300">Skipped (no number / opted out / limit):</span>
-                  <span className="font-bold text-amber-600 dark:text-amber-400">{sendResult?.total_skipped ?? 0}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-slate-300">Auto AI Assistant Mode:</span>
-                  <span className="font-bold text-indigo-600 dark:text-indigo-400">🤖 Active 24/7</span>
+                <p className="ui-label">Template</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Message template">
+                  {WHATSAPP_TEMPLATES.map((t) => {
+                    const active = templateId === t.id;
+                    return (
+                      <button
+                        key={t.id} type="button" role="radio" aria-checked={active}
+                        onClick={() => pickTemplate(t)}
+                        className="ui-card text-left p-3"
+                        style={active ? { borderColor: 'var(--ui-primary)', boxShadow: 'var(--ui-focus)' } : undefined}
+                      >
+                        <span className="block font-semibold text-sm" style={{ color: 'var(--ui-text)' }}>{t.name}</span>
+                        <span className="block text-xs mt-0.5" style={{ color: 'var(--ui-muted)' }}>{t.tagline}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-                <button
-                  onClick={() => {
-                    onClose();
-                    navigate('/whatsapp-hub');
-                  }}
-                  className="w-full sm:w-auto px-5 py-3 rounded-2xl font-bold text-xs text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+              <div>
+                <label htmlFor="bulk-message" className="ui-label">Message <span className="ui-muted">(you can edit it)</span></label>
+                <textarea id="bulk-message" value={message} onChange={(e) => setMessage(e.target.value)} rows={8} className="ui-input" style={{ lineHeight: 1.55, resize: 'vertical', minHeight: 150 }} />
+                <p className="ui-help mt-1">The text <code>{'{shop_name}'}</code> is replaced with each shop's own name.</p>
+              </div>
+
+              <div>
+                <p className="ui-label">Example for {previewName}</p>
+                <div className="rounded-2xl p-3" style={{ background: 'var(--ui-surface-2)', border: '1px solid var(--ui-border)' }}>
+                  <div className="ml-auto max-w-[92%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap" style={{ background: 'var(--ui-success-soft)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderBottomRightRadius: 4, overflowWrap: 'anywhere', lineHeight: 1.5 }}>
+                    {fillTemplate(message, previewName).trim() || <span className="ui-muted">Your message is empty.</span>}
+                  </div>
+                </div>
+              </div>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={attachFlyer} onChange={(e) => setAttachFlyer(e.target.checked)} className="mt-1 h-4 w-4" />
+                <span className="text-sm" style={{ color: 'var(--ui-text-2)' }}>
+                  <strong style={{ color: 'var(--ui-text)' }}>Also send our flyer images</strong> with every message.
+                </span>
+              </label>
+            </div>
+
+            <div className="px-5 py-4 border-t flex flex-wrap items-center justify-between gap-2" style={{ borderColor: 'var(--ui-border)' }}>
+              <p className="text-sm" style={{ color: 'var(--ui-muted)' }}>
+                Will be sent to {selectedCount} shop{selectedCount === 1 ? '' : 's'}, one after another.
+              </p>
+              <button type="button" onClick={startSending} disabled={!message.trim() || selectedCount === 0} className="ui-btn ui-btn-success">
+                <Send className="h-4 w-4" aria-hidden="true" />
+                Start sending to {selectedCount}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ───────── Step 3: progress ───────── */}
+        {step === 'send' && (
+          <>
+            <div className="px-5 pt-4 pb-3 border-b space-y-3" style={{ borderColor: 'var(--ui-border)' }}>
+              <div>
+                <div className="flex items-center justify-between text-sm mb-1.5" style={{ color: 'var(--ui-text-2)' }}>
+                  <span aria-live="polite">
+                    {running && current && <>Sending to <strong style={{ color: 'var(--ui-text)' }}>{current.name}</strong> ({doneCount + 1} of {total})</>}
+                    {running && !current && 'Getting the next shop ready…'}
+                    {!running && !finished && 'Paused'}
+                    {finished && `All done: ${doneCount} of ${total} processed`}
+                  </span>
+                  <span className="font-semibold" style={{ color: 'var(--ui-text)' }}>{Math.round((doneCount / Math.max(total, 1)) * 100)}%</span>
+                </div>
+                <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--ui-border)' }} role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={doneCount}>
+                  <div className="h-full rounded-full transition-all" style={{ width: `${(doneCount / Math.max(total, 1)) * 100}%`, background: 'var(--ui-success)' }} />
+                </div>
+                {running && <p className="ui-help mt-1.5">About {minutesLeft} minute{minutesLeft === 1 ? '' : 's'} left. Keep this window open.</p>}
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 text-center">
+                {[
+                  { label: 'Sent', value: counts.sent + counts.test, color: 'var(--ui-success)' },
+                  { label: 'Waiting', value: counts.pending + counts.sending, color: 'var(--ui-text-2)' },
+                  { label: 'Failed', value: counts.failed, color: 'var(--ui-danger)' },
+                  { label: 'Skipped', value: counts.skipped, color: 'var(--ui-warning)' },
+                ].map((c) => (
+                  <div key={c.label} className="rounded-xl py-2" style={{ background: 'var(--ui-surface-2)', border: '1px solid var(--ui-border)' }}>
+                    <div className="text-xl font-bold" style={{ color: c.color }}>{c.value}</div>
+                    <div className="text-xs" style={{ color: 'var(--ui-muted)' }}>{c.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {haltNote && (
+                <div className="ui-notice ui-notice-warning" role="alert">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>{haltNote}</span>
+                </div>
+              )}
+              {counts.test > 0 && (
+                <div className="ui-notice ui-notice-warning" role="status">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>{counts.test} message{counts.test === 1 ? ' was' : 's were'} only saved because the server is in test mode. They were not sent to WhatsApp.</span>
+                </div>
+              )}
+            </div>
+
+            <ul className="flex-1 overflow-y-auto min-h-0" role="list" aria-label="Progress for each shop">
+              {queue.map((q, i) => (
+                <li
+                  key={q.key}
+                  ref={q.status === 'sending' ? currentRowRef : null}
+                  className="flex items-start gap-3 px-5 py-3 border-b"
+                  style={{ borderColor: 'var(--ui-border)', background: q.status === 'sending' ? 'var(--ui-primary-soft)' : 'transparent' }}
                 >
-                  <Bot className="w-4 h-4" />
-                  <span>Open AI WhatsApp Sales Hub</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span className="w-6 text-sm text-right shrink-0" style={{ color: 'var(--ui-muted)' }}>{i + 1}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold text-sm truncate" style={{ color: 'var(--ui-text)' }}>{q.name}</span>
+                    <span className="block text-xs" style={{ color: 'var(--ui-muted)' }}>+{q.phone}</span>
+                    {q.note && <span className="block text-xs mt-1" style={{ color: q.status === 'failed' ? 'var(--ui-danger)' : 'var(--ui-warning)' }}>{q.note}</span>}
+                  </span>
+                  <StatusMark status={q.status} />
+                </li>
+              ))}
+            </ul>
+
+            <div className="px-5 py-4 border-t flex flex-wrap items-center justify-end gap-2" style={{ borderColor: 'var(--ui-border)' }}>
+              {running && (
+                <button type="button" onClick={() => { stopRef.current = true; }} className="ui-btn ui-btn-secondary">
+                  <Pause className="h-4 w-4" aria-hidden="true" />
+                  Stop after this shop
                 </button>
-
-                {targetShops[0] && (
-                  <button
-                    onClick={() => {
-                      launchWhatsAppApp(targetShops[0], messageText);
-                    }}
-                    className="w-full sm:w-auto px-5 py-3 rounded-2xl font-bold text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-300/60 dark:border-emerald-800 flex items-center justify-center gap-2 cursor-pointer transition-all"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    <span>Launch in WhatsApp App</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={onClose}
-                  className="w-full sm:w-auto px-5 py-3 rounded-2xl font-bold text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                >
+              )}
+              {!running && counts.pending > 0 && (
+                <button type="button" onClick={continueSending} className="ui-btn ui-btn-success">
+                  <Play className="h-4 w-4" aria-hidden="true" />
+                  Continue ({counts.pending} waiting)
+                </button>
+              )}
+              {!running && counts.failed > 0 && (
+                <button type="button" onClick={retryFailed} className="ui-btn ui-btn-secondary">
+                  <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                  Try the {counts.failed} failed again
+                </button>
+              )}
+              {!running && (
+                <Link to="/whatsapp" onClick={onClose} className="ui-btn ui-btn-secondary">
+                  <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                  Open WhatsApp chats
+                </Link>
+              )}
+              {!running && (
+                <button type="button" onClick={onClose} className="ui-btn ui-btn-primary">
+                  <Check className="h-4 w-4" aria-hidden="true" />
                   Done
                 </button>
-              </div>
+              )}
             </div>
-          ) : (
-            /* Configure & Review State */
-            <>
-              {errorMsg && (
-                <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2 font-medium">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{errorMsg}</span>
-                </div>
-              )}
-
-              {/* Template Switcher */}
-              <div className="space-y-2">
-                <label className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center justify-between">
-                  <span>Official AI Outreach Pitch Template</span>
-                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                    Active Official Template
-                  </span>
-                </label>
-                <div className="grid grid-cols-1 gap-2">
-                  {PRESET_TEMPLATES.map((tmpl) => {
-                    const isSelected = selectedTemplateId === tmpl.id;
-                    return (
-                      <button
-                        key={tmpl.id}
-                        type="button"
-                        onClick={() => handleTemplateChange(tmpl)}
-                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                          isSelected
-                            ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-2 ring-emerald-500/20'
-                            : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
-                            {tmpl.badge}
-                          </span>
-                        </div>
-                        <div className="text-xs font-bold text-slate-900 dark:text-white line-clamp-1">
-                          {tmpl.name}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Message Editor */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                    2. Pitch Message Content
-                  </label>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-slate-400 font-medium mr-1">Insert tags:</span>
-                    <button
-                      type="button"
-                      onClick={() => insertTag('{shop_name}')}
-                      className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 transition-colors"
-                    >
-                      {'{shop_name}'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => insertTag('{category}')}
-                      className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 transition-colors"
-                    >
-                      {'{category}'}
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  rows={4}
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  placeholder="Enter custom AI outreach message..."
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed transition-all resize-none font-medium"
-                />
-              </div>
-
-              {/* Auto AI Bot Option */}
-              <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900 dark:text-white">
-                      Auto AI Sales Assistant Bot
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                      When shop owners reply on WhatsApp, our AI bot will handle objections & answer quotes.
-                    </div>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={autoAIEnabled}
-                  onChange={(e) => setAutoAIEnabled(e.target.checked)}
-                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                />
-              </div>
-
-              {/* Target Shop Selection List */}
-              <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                      3. Target Recipients ({targetShops.length} selected)
-                    </label>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                      ⚡ 15 at a time
-                    </span>
-                  </div>
-
-                  {/* Batch Actions */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectBatch(0)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer border ${
-                        selectedBatchIndex === 0 && selectedShopIds.size === Math.min(BATCH_SIZE, shops.length)
-                          ? 'bg-emerald-600 text-white border-emerald-600'
-                          : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300/60 dark:border-emerald-800 hover:bg-emerald-100'
-                      }`}
-                      title="Select first 15 shops"
-                    >
-                      Select 1-15
-                    </button>
-
-                    {shops.length > BATCH_SIZE && (
-                      <button
-                        type="button"
-                        onClick={handleSelectNextBatch}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-300/60 dark:border-indigo-800 hover:bg-indigo-100 transition-colors cursor-pointer"
-                        title={`Select next batch of 15 shops (Batch ${(selectedBatchIndex + 1) % totalBatches + 1} of ${totalBatches})`}
-                      >
-                        Next 15 →
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleSelectAll}
-                      className="text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 px-2 py-1 flex items-center gap-1"
-                    >
-                      {selectedShopIds.size === shops.length ? (
-                        <>
-                          <Square className="w-3 h-3" />
-                          <span>Deselect</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckSquare className="w-3 h-3" />
-                          <span>All ({shops.length})</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800/60 bg-slate-50/40 dark:bg-slate-900/40 p-1">
-                  {shops.map((shop, idx) => {
-                    const shopKey = shop.id || `shop_${idx}`;
-                    const isChecked = selectedShopIds.has(shopKey);
-                    const formattedPhone = formatPhoneNumber(shop.phone, shop.name, shop.id || shop.external_place_id);
-
-                    return (
-                      <div
-                        key={shopKey}
-                        onClick={() => toggleSelectShop(shopKey)}
-                        className={`p-2.5 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-colors ${
-                          isChecked
-                            ? 'bg-white dark:bg-slate-800 shadow-2xs'
-                            : 'opacity-60 hover:opacity-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {}}
-                            className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 pointer-events-none"
-                          />
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                              <span className="text-[10px] text-slate-400 font-mono mr-1.5">#{idx + 1}</span>
-                              {shop.name}
-                            </div>
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                              <span>{shop.category || 'Local Shop'}</span>
-                              <span>•</span>
-                              <span className="font-mono text-[10px]">+{formattedPhone}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const personalized = messageText
-                                .replace(/\{shop_name\}/gi, shop.name || 'Local Shop')
-                                .replace(/\{category\}/gi, shop.category || 'Business');
-                              launchWhatsAppApp(shop, personalized);
-                            }}
-                            className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-600 dark:text-emerald-400 border border-emerald-300/40 transition-colors"
-                            title={`Open directly in WhatsApp for ${shop.name}`}
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-black uppercase bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300">
-                            No Website
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Attached Marketing Flyer (EasyBillBro Restaurant Billing - Second Image) */}
-              <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl space-y-2.5">
-                <div className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <span>📎 Attached Marketing Flyer</span>
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">(Sent as 1 combined message)</span>
-                  </span>
-                  <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 px-2.5 py-0.5 rounded-full border border-emerald-300/50 dark:border-emerald-800">
-                    Auto-Attached with Pitch
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 p-2 bg-white dark:bg-slate-900/80 rounded-xl border border-emerald-200/60 dark:border-emerald-800/40 shadow-xs">
-                  <img
-                    src="/images/easybillbro-flyer.jpg"
-                    alt="EasyBillBro Restaurant Billing & POS Flyer"
-                    className="w-12 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs shrink-0"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-extrabold text-slate-900 dark:text-white">
-                      EasyBillBro — Restaurant Billing & POS
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
-                      High-resolution visual flyer attached directly alongside the Lexon IT pitch message.
-                    </div>
-                    <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold mt-1">
-                      easybillbro-flyer.jpg • 1 Image
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress bar during sending */}
-              {isSending && (
-                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-2 animate-in fade-in">
-                  <div className="flex items-center justify-between text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                    <span className="flex items-center gap-1.5">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
-                      <span>Broadcasting AI Pitch & Flyer: {currentSendingName}...</span>
-                    </span>
-                    <span>{progress}%</span>
-                  </div>
-                  <div className="w-full h-2 rounded-full bg-emerald-200/60 dark:bg-emerald-900 overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300 rounded-full"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Modal Footer */}
-        {!isComplete && (
-          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/80 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSending}
-              className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExecuteBroadcast}
-              disabled={isSending || targetShops.length === 0}
-              className="px-6 py-2.5 rounded-xl text-xs font-extrabold text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-600/25 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {isSending ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Sending Pitch & Flyer to {targetShops.length} Shops...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  <span>Send AI Pitch + Flyer to All ({targetShops.length} Shops)</span>
-                </>
-              )}
-            </button>
-          </div>
+          </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

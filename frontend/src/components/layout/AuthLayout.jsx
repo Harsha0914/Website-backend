@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Store } from 'lucide-react';
+import { Store, ArrowLeft } from 'lucide-react';
 import MobileBottomNav from './MobileBottomNav';
 
 /**
@@ -19,6 +19,10 @@ export default function AuthLayout({ title, subtitle, children, footer }) {
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--ui-bg)' }}>
       <main className="flex-1 flex items-start sm:items-center justify-center px-4 py-10 pb-28">
         <div className="w-full max-w-md">
+          <Link to="/" className="ui-btn ui-btn-ghost ui-btn-sm mb-4" style={{ marginLeft: -8 }}>
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back to home
+          </Link>
           <div className="text-center mb-6">
             <Link to="/" className="inline-flex items-center gap-2.5 mb-5" aria-label="Website Presence home">
               <span
@@ -36,6 +40,12 @@ export default function AuthLayout({ title, subtitle, children, footer }) {
           <div className="ui-card ui-card-pad">{children}</div>
 
           {footer && <div className="mt-6 text-center">{footer}</div>}
+
+          <div className="mt-4 text-center">
+            <Link to="/" className="text-sm font-semibold hover:underline" style={{ color: 'var(--ui-text-2)' }}>
+              ← Back to home
+            </Link>
+          </div>
         </div>
       </main>
       <MobileBottomNav />

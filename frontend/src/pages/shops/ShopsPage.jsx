@@ -275,15 +275,8 @@ export default function ShopsPage({ defaultTab = 'all' }) {
     });
   }, [baseFilteredBusinesses, selectedRating, sortBy, phoneFilter]);
 
-  // Shops without website available for bulk outreach
-  const noWebsiteShops = React.useMemo(() => {
-    return filteredBusinesses.filter(b => (b.website_status === 'NO_WEBSITE' || b.website_status === 'WEBSITE_UNREACHABLE') && hasPhone(b));
-  }, [filteredBusinesses]);
-
-  // Only shops with a phone number can be messaged.
-  const broadcastTargetList = activeTab === 'no-websites' 
-    ? filteredBusinesses.filter(hasPhone)
-    : (noWebsiteShops.length > 0 ? noWebsiteShops : filteredBusinesses.filter(hasPhone));
+  // Shops that can be messaged (they have a phone number); the dialog lets the user pick any number of them.
+  const sendableShops = React.useMemo(() => filteredBusinesses.filter(hasPhone), [filteredBusinesses]);
 
   const phoneCounts = React.useMemo(() => {
     const withPhone = baseFilteredBusinesses.filter(hasPhone).length;
@@ -360,10 +353,10 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                 <Sliders className="h-4 w-4" aria-hidden="true" />
                 Change search
               </button>
-              {noWebsiteShops.length > 0 && (
+              {sendableShops.length > 0 && (
                 <button type="button" onClick={() => setShowBroadcastModal(true)} className="ui-btn ui-btn-success">
                   <MessageCircle className="h-4 w-4" aria-hidden="true" />
-                  Message {noWebsiteShops.length} shops without a website
+                  Send to several shops
                 </button>
               )}
             </div>
@@ -754,7 +747,8 @@ export default function ShopsPage({ defaultTab = 'all' }) {
       <BulkWhatsAppBroadcastModal
         isOpen={showBroadcastModal}
         onClose={() => setShowBroadcastModal(false)}
-        shops={broadcastTargetList}
+        shops={sendableShops}
+        onlyNoWebsiteDefault={activeTab === 'no-websites'}
         onBroadcastComplete={() => {}}
       />
 

@@ -5,7 +5,8 @@ import { Link } from 'react-router-dom';
 import { Navigation, MapPin, MessageCircle, ExternalLink, Layers } from 'lucide-react';
 import { formatDistance } from '../../services/distanceService';
 import { getGoogleMapsUrl, getGoogleMapsDirectionsUrl } from '../../services/locationService';
-import { getWhatsAppUrl, launchWhatsAppApp } from '../../services/whatsappService';
+import { getWhatsAppUrl } from '../../services/whatsappService';
+import WhatsAppLaunchModal from '../chat/WhatsAppLaunchModal';
 import { useShopStore } from '../../store/shopStore';
 
 // Fix for default Leaflet marker icon in React/Webpack/Vite
@@ -132,6 +133,8 @@ export function BusinessMap({
     !isNaN(userCenter[0]) &&
     !isNaN(userCenter[1])
   ) ? userCenter : [17.4375, 78.4483];
+
+  const [waShop, setWaShop] = useState(null);
 
   return (
     <div style={{
@@ -262,7 +265,7 @@ export function BusinessMap({
                     </a>
                     <button
                       type="button"
-                      onClick={() => launchWhatsAppApp(b)}
+                      onClick={() => setWaShop(b)}
                       style={{
                         display:'flex', alignItems:'center', justifyContent:'center', gap:4,
                         padding:'6px 10px', borderRadius:8, background:'linear-gradient(135deg,#059669,#10b981)',
@@ -345,6 +348,7 @@ export function BusinessMap({
           </div>
         </div>
       </div>
+      <WhatsAppLaunchModal business={waShop} isOpen={!!waShop} onClose={() => setWaShop(null)} />
     </div>
   );
 }

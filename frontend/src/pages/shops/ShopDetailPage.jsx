@@ -23,7 +23,8 @@ import { WebsiteAnalysisCard } from '../../components/website/WebsiteAnalysisCar
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import api from '../../services/api';
 import { getGoogleMapsUrl, getGoogleMapsDirectionsUrl } from '../../services/locationService';
-import { getWhatsAppUrl, launchWhatsAppApp } from '../../services/whatsappService';
+import { getWhatsAppUrl } from '../../services/whatsappService';
+import WhatsAppLaunchModal from '../../components/chat/WhatsAppLaunchModal';
 import { useShopStore } from '../../store/shopStore';
 
 export default function ShopDetailPage() {
@@ -36,6 +37,7 @@ export default function ShopDetailPage() {
   const [loading, setLoading] = useState(true);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showWAModal, setShowWAModal] = useState(false);
   const [requestMessage, setRequestMessage] = useState('');
   const [requestSubmitted, setRequestSubmitted] = useState(false);
 
@@ -300,12 +302,12 @@ export default function ShopDetailPage() {
               {/* Direct WhatsApp Contact Button */}
               <button
                 type="button"
-                onClick={() => launchWhatsAppApp(business)}
+                onClick={() => setShowWAModal(true)}
                 className="w-full py-3.5 px-4 text-xs font-extrabold text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
-                title="Chat with Shop Owner on WhatsApp"
+                title="Choose a message and send it on WhatsApp"
               >
                 <MessageCircle className="w-4 h-4 text-emerald-100" />
-                <span>Chat with Owner on WhatsApp</span>
+                <span>Send WhatsApp message</span>
               </button>
 
               {/* Driving Directions */}
@@ -348,6 +350,8 @@ export default function ShopDetailPage() {
           </div>
         </div>
       </main>
+
+      <WhatsAppLaunchModal business={business} isOpen={showWAModal} onClose={() => setShowWAModal(false)} />
 
       {/* Website Development Request Modal */}
       {showRequestModal && (
