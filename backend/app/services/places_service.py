@@ -1308,13 +1308,19 @@ class GooglePlacesProvider(PlacesProvider):
         def _offset_lng(lat: float, lng: float, km: float) -> float:
             return lng + (km / (111.0 * math.cos(math.radians(lat))))
 
+        # Google returns at most 20 places per request, so dense areas are covered by a grid of
+        # overlapping sub-searches: the more room, the more cells.
         origins: list[tuple[float, float, float]] = [(latitude, longitude, radius_km)]
-        if radius_km > 3.0:
-            sub_r = radius_km * 0.6
-            for angle in [0, math.pi/2, math.pi, 3*math.pi/2]:
-                pt_lat = _offset_lat(latitude, radius_km * 0.5 * math.cos(angle))
-                pt_lng = _offset_lng(latitude, longitude, radius_km * 0.5 * math.sin(angle))
-                origins.append((pt_lat, pt_lng, sub_r))
+        if radius_km > 0.8:
+            rings = [(0.5, 0.6, [0, 1, 2, 3], math.pi / 2, 0.0)]
+            if radius_km > 2.5:
+                rings.append((0.8, 0.4, [0, 1, 2, 3], math.pi / 2, math.pi / 4))
+            for dist_f, size_f, idx, step, start in rings:
+                for i in idx:
+                    angle = start + i * step
+                    pt_lat = _offset_lat(latitude, radius_km * dist_f * math.cos(angle))
+                    pt_lng = _offset_lng(latitude, longitude, radius_km * dist_f * math.sin(angle))
+                    origins.append((pt_lat, pt_lng, max(radius_km * size_f, 0.5)))
 
         quota_hit = False
         google_errors: list[tuple[str, str]] = []
@@ -1357,7 +1363,7 @@ class GooglePlacesProvider(PlacesProvider):
 
             found_places = []
             try:
-                with httpx.Client(timeout=5.0) as client:
+                with httpx.Client(timeout=10.0) as client:
                     # 1. Official Google Places API searchNearby with exact Circular radius
                     if allowed_types:
                         # Specific category requested (e.g. restaurant, pharmacy)
@@ -1382,7 +1388,7 @@ class GooglePlacesProvider(PlacesProvider):
                             pass
                     elif not keyword:
                         # All Categories: query commercial sector batches to discover dozens of real shops!
-                        for batch in ALL_COMMERCIAL_CATEGORIES_BATCHES[:5]:
+                        for batch in ALL_COMMERCIAL_CATEGORIES_BATCHES:
                             if quota_hit:
                                 break
                             nearby_payload = {
@@ -1413,25 +1419,33 @@ class GooglePlacesProvider(PlacesProvider):
                         t_payload = {
                             "textQuery": tq,
                             "locationRestriction": bbox,
-                            "maxResultCount": 20
+                            "pageSize": 20
                         }
+                        text_headers = dict(headers)
+                        text_headers["X-Goog-FieldMask"] = GOOGLE_FIELD_MASK + ",nextPageToken"
                         try:
-                            resp = client.post(f"{self.BASE_URL}:searchText", json=t_payload, headers=headers)
-                            if resp.status_code == 200:
-                                for p in resp.json().get("places", []):
-                                    found_places.append(p)
-                            elif resp.status_code != 200:
-                                _record_google_error(resp)
-                                break
+                            for _page in range(3):  # up to 60 results per query
+                                resp = client.post(f"{self.BASE_URL}:searchText", json=t_payload, headers=text_headers)
+                                if resp.status_code != 200:
+                                    _record_google_error(resp)
+                                    break
+                                body = resp.json()
+                                found_places.extend(body.get("places", []))
+                                token = body.get("nextPageToken")
+                                if not token:
+                                    break
+                                t_payload = {**t_payload, "pageToken": token}
                         except Exception:
                             pass
+                        if quota_hit:
+                            break
             except Exception:
                 pass
             return found_places
 
 
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(origins))) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(origins))) as executor:
                 futures = [executor.submit(_fetch_origin, o) for o in origins]
                 for fut in concurrent.futures.as_completed(futures):
                     for p in fut.result():
