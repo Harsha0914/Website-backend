@@ -1,18 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Store,
-  User,
-  Mail,
-  Lock,
-  Phone,
-  ShieldCheck,
-  ArrowRight,
-  ArrowLeft,
-  AlertCircle,
-  CheckCircle,
-} from 'lucide-react';
+import { User, ShieldCheck, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import AuthLayout from '../../components/layout/AuthLayout';
 
 export default function RegisterPage() {
   const { register, loading, error } = useAuthStore();
@@ -129,345 +119,156 @@ export default function RegisterPage() {
     }
   };
 
+  const isAdmin = role === 'ADMIN';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50/60 via-slate-50 to-indigo-50/40 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
-      
-      {/* Brand Header */}
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-3">
-        <Link to="/" className="inline-flex items-center gap-2.5 group">
-          <div className="p-2.5 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl shadow-md shadow-blue-500/25 group-hover:scale-105 transition-transform">
-            <Store className="w-6 h-6" />
-          </div>
-          <span className="text-slate-900 dark:text-white font-black text-2xl tracking-tight">
-            Website <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Presence</span> Detection
-          </span>
-        </Link>
-
-        <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight pt-2">
-          Create your account
-        </h2>
-        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-sm mx-auto font-medium">
-          Discover local grocery stores, evaluate websites, and improve digital presence
+    <AuthLayout
+      title={isAdmin ? 'Create an administrator account' : 'Create your account'}
+      subtitle={
+        isAdmin
+          ? 'Administrators can manage users, shops and reports. You need the admin secret code.'
+          : 'It takes a minute. Then you can find nearby shops and see which ones need a website.'
+      }
+      footer={
+        <p className="ui-help">
+          Already have an account?{' '}
+          <Link to="/login" className="font-semibold underline" style={{ color: 'var(--ui-primary-text)' }}>Sign in</Link>
         </p>
-      </div>
-
-      {/* Main Form Card */}
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl py-8 px-6 sm:px-10 shadow-xl shadow-blue-500/5 dark:shadow-none rounded-3xl border border-slate-200/80 dark:border-slate-800 space-y-5">
-          
-          {/* Account Role Selector Tabs */}
-          <div className="grid grid-cols-2 gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl text-xs font-bold border border-slate-200/60 dark:border-slate-700/60">
-            <button
-              type="button"
-              onClick={() => {
-                setRole('USER');
-                setValidationError('');
-              }}
-              className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
-                role === 'USER'
-                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <span>User Register</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setRole('ADMIN');
-                setValidationError('');
-              }}
-              className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
-                role === 'ADMIN'
-                  ? 'bg-slate-900 text-amber-400 dark:bg-amber-950/80 dark:text-amber-300 shadow-sm'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4 text-amber-400" />
-              <span>Admin Register</span>
-            </button>
-          </div>
-
-          {/* Success Message */}
-          {successMessage && (
-            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 flex items-center gap-2.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-              <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{successMessage}</span>
-            </div>
-          )}
-
-          {/* Error Message */}
-          {(validationError || error) && (
-            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 space-y-2.5">
-              <div className="flex items-center gap-2.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{typeof (validationError || error) === 'string' ? (validationError || error) : JSON.stringify(validationError || error)}</span>
-              </div>
-              
-              {/* If account already exists */}
-              {((error && typeof error === 'string' && (error.toLowerCase().includes('already exists') || error.toLowerCase().includes('account found'))) ||
-                (validationError && validationError.toLowerCase().includes('already exists'))) && (
-                <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/60 flex items-center gap-2">
-                  <Link
-                    to={`/login?email=${encodeURIComponent(formData.email)}`}
-                    className="flex-1 py-2 px-3 text-center text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors"
-                  >
-                    Sign In with this Email
-                  </Link>
-                  <Link
-                    to={`/login?email=${encodeURIComponent(formData.email)}&forgot=1`}
-                    className="flex-1 py-2 px-3 text-center text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl transition-colors"
-                  >
-                    Reset Password
-                  </Link>
-                </div>
-              )}
-            </div>
-          )}
-
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                Username <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  type="text"
-                  name="username"
-                  required
-                  value={formData.username}
-                  onChange={handleChange}
-                  placeholder="e.g. johndoe"
-                  className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Full Name */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Full Name</label>
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  type="text"
-                  name="full_name"
-                  value={formData.full_name}
-                  onChange={handleChange}
-                  placeholder="Jane Doe"
-                  className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Email Address */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Email Address (Optional)</label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="jane@example.com"
-                  className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Phone Number */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Phone Number (Optional)</label>
-              <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  placeholder="+91 98490 12345"
-                  className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Password</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  type="password"
-                  name="password"
-                  required
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="Min 8 chars, 1 uppercase & 1 number"
-                  className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Confirm Password */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Confirm Password</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  type="password"
-                  name="confirm_password"
-                  required
-                  value={formData.confirm_password}
-                  onChange={handleChange}
-                  placeholder="Re-enter password"
-                  className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* I agree with these terms - only for register page */}
-            <div className="flex items-start gap-2.5 pt-1.5 pb-1">
-              <input
-                id="agree_terms"
-                name="agree_terms"
-                type="checkbox"
-                required
-                checked={agreeTerms}
-                onChange={(e) => {
-                  setAgreeTerms(e.target.checked);
-                  if (validationError.toLowerCase().includes('terms')) {
-                    setValidationError('');
-                  }
-                }}
-                className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500/20 cursor-pointer accent-blue-600 shrink-0"
-              />
-              <label
-                htmlFor="agree_terms"
-                className="text-xs text-slate-600 dark:text-slate-400 select-none cursor-pointer leading-tight"
-              >
-                I agree with these{' '}
-                <button
-                  type="button"
-                  onClick={() => setShowTermsModal(true)}
-                  className="font-bold text-blue-600 dark:text-blue-400 hover:underline inline cursor-pointer"
-                >
-                  Terms & Conditions
-                </button>{' '}
-                and Privacy Policy
-              </label>
-            </div>
-
-            {role === 'ADMIN' && (
-              <div>
-                <label htmlFor="admin_code" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Admin secret code
-                </label>
-                <input
-                  id="admin_code"
-                  name="admin_code"
-                  type="password"
-                  autoComplete="off"
-                  required
-                  value={adminCode}
-                  onChange={(e) => setAdminCode(e.target.value)}
-                  placeholder="Provided by your system owner"
-                  className="w-full px-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all"
-                />
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full py-3.5 px-4 text-xs font-black rounded-xl shadow-md transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 ${
-                role === 'ADMIN'
-                  ? 'bg-slate-900 hover:bg-slate-800 text-amber-400 shadow-slate-900/20'
-                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-500/25'
-              }`}
-            >
-              <span>{loading ? 'Creating account...' : `Register as ${role === 'ADMIN' ? 'Administrator' : 'User'}`}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-
-          {/* Login prompt */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400">
-            Already registered?{' '}
-            <Link to="/login" className="font-bold text-blue-600 dark:text-blue-400 hover:underline">
-              Sign In to Your Account
-            </Link>
-          </div>
-        </div>
-
-        {/* Back to Home Button */}
-        <div className="mt-6 text-center">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 px-4 py-2.5 rounded-full transition-all shadow-xs"
+      }
+    >
+      {/* Account type */}
+      <div className="grid grid-cols-2 gap-2 mb-6" role="group" aria-label="Account type">
+        {[
+          { id: 'USER', label: 'Member', icon: User },
+          { id: 'ADMIN', label: 'Administrator', icon: ShieldCheck },
+        ].map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => { setRole(id); setValidationError(''); }}
+            aria-pressed={role === id}
+            className={`ui-chip justify-center ${role === id ? 'ui-chip-active' : ''}`}
+            style={{ minHeight: 44, borderRadius: 12 }}
           >
-            <ArrowLeft className="w-4 h-4 text-blue-600" />
-            <span>Back to Home</span>
-          </Link>
-        </div>
+            <Icon className="h-4 w-4" aria-hidden="true" />
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Terms & Conditions Modal */}
+      {successMessage && (
+        <div className="ui-notice ui-notice-success mb-5" role="status">
+          <CheckCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+      {(validationError || error) && (
+        <div className="ui-notice ui-notice-error mb-5" role="alert">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+          <span>{validationError || (typeof error === 'string' ? error : 'Something went wrong. Please try again.')}</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <div>
+          <label htmlFor="reg-username" className="ui-label">Username</label>
+          <input id="reg-username" name="username" type="text" autoComplete="username" value={formData.username} onChange={handleChange} placeholder="At least 3 characters" className="ui-input" />
+        </div>
+        <div>
+          <label htmlFor="reg-full-name" className="ui-label">Full name <span className="ui-muted font-normal">(optional)</span></label>
+          <input id="reg-full-name" name="full_name" type="text" autoComplete="name" value={formData.full_name} onChange={handleChange} className="ui-input" />
+        </div>
+        <div>
+          <label htmlFor="reg-email" className="ui-label">E-mail <span className="ui-muted font-normal">(used to reset your password)</span></label>
+          <input id="reg-email" name="email" type="email" autoComplete="email" value={formData.email} onChange={handleChange} placeholder="you@example.com" className="ui-input" />
+        </div>
+        <div>
+          <label htmlFor="reg-phone" className="ui-label">Phone <span className="ui-muted font-normal">(optional)</span></label>
+          <input id="reg-phone" name="phone" type="tel" autoComplete="tel" value={formData.phone} onChange={handleChange} className="ui-input" />
+        </div>
+        <div>
+          <label htmlFor="reg-password" className="ui-label">Password</label>
+          <input id="reg-password" name="password" type="password" autoComplete="new-password" value={formData.password} onChange={handleChange} className="ui-input" />
+          <p className="ui-help mt-1.5">At least 8 characters, with an upper-case letter and a number.</p>
+        </div>
+        <div>
+          <label htmlFor="reg-confirm" className="ui-label">Repeat password</label>
+          <input id="reg-confirm" name="confirm_password" type="password" autoComplete="new-password" value={formData.confirm_password} onChange={handleChange} className="ui-input" />
+        </div>
+
+        {isAdmin && (
+          <div>
+            <label htmlFor="admin_code" className="ui-label">Admin secret code</label>
+            <input id="admin_code" name="admin_code" type="password" autoComplete="off" value={adminCode} onChange={(e) => setAdminCode(e.target.value)} placeholder="Given to you by the system owner" className="ui-input" />
+          </div>
+        )}
+
+        <label className="flex items-start gap-3 pt-1 cursor-pointer">
+          <input
+            id="agree_terms"
+            name="agree_terms"
+            type="checkbox"
+            checked={agreeTerms}
+            onChange={(e) => {
+              setAgreeTerms(e.target.checked);
+              if (validationError.toLowerCase().includes('terms')) setValidationError('');
+            }}
+            className="mt-1 h-5 w-5 rounded"
+            style={{ accentColor: 'var(--ui-primary)' }}
+          />
+          <span className="text-sm" style={{ color: 'var(--ui-text-2)' }}>
+            I agree to the{' '}
+            <button type="button" onClick={() => setShowTermsModal(true)} className="font-semibold underline" style={{ color: 'var(--ui-primary-text)' }}>
+              terms and conditions
+            </button>
+            .
+          </span>
+        </label>
+
+        <button type="submit" disabled={loading} className="ui-btn ui-btn-primary ui-btn-lg ui-btn-block">
+          {loading ? 'Creating account…' : isAdmin ? 'Create administrator account' : 'Create account'}
+          {!loading && <ArrowRight className="h-5 w-5" aria-hidden="true" />}
+        </button>
+      </form>
+
       {showTermsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Terms & Conditions</h3>
-              <button
-                type="button"
-                onClick={() => setShowTermsModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg font-bold"
-              >
-                ✕
-              </button>
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ background: 'rgba(15, 23, 42, 0.5)' }}
+          onClick={(e) => e.target === e.currentTarget && setShowTermsModal(false)}
+        >
+          <div role="dialog" aria-modal="true" aria-labelledby="terms-title" className="ui-card w-full sm:max-w-md p-6 rounded-b-none sm:rounded-b-[14px]" style={{ boxShadow: 'var(--ui-shadow-lg)' }}>
+            <div className="flex items-start justify-between gap-3">
+              <h2 id="terms-title" className="ui-h2">Terms and conditions</h2>
+              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" style={{ width: 40, padding: 0 }} onClick={() => setShowTermsModal(false)} aria-label="Close">✕</button>
             </div>
-            <div className="text-xs text-slate-600 dark:text-slate-300 space-y-3 leading-relaxed">
-              <p>
-                Welcome to <strong>Website Presence Detection</strong>. By registering an account, you agree to:
-              </p>
-              <ul className="list-disc pl-5 space-y-1.5 text-slate-500 dark:text-slate-400">
-                <li>Provide accurate account information and keep your credentials secure.</li>
-                <li>Use location searches and business contact tools responsibly in accordance with applicable laws.</li>
-                <li>Respect privacy rights when sending inquiries, WhatsApp messages, or website evaluation requests.</li>
-                <li>Protect sensitive data and comply with local business regulations.</li>
+            <div className="mt-3 space-y-3 text-sm" style={{ color: 'var(--ui-text-2)' }}>
+              <p>Welcome to <strong>Website Presence Detection</strong>. By creating an account you agree to:</p>
+              <ul className="list-disc pl-5 space-y-1.5">
+                <li>Give accurate account information and keep your password secure.</li>
+                <li>Use location searches and business contact tools responsibly and lawfully.</li>
+                <li>Respect people's privacy when sending enquiries, WhatsApp messages or website evaluation requests, and stop messaging anyone who asks you to.</li>
+                <li>Protect sensitive data and follow local business regulations.</li>
               </ul>
-              <p>
-                We do not share your private account data with unauthorized third parties. For full policy details, contact support.
-              </p>
+              <p>We do not share your private account data with unauthorised third parties. For the full policy, contact support.</p>
             </div>
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
+            <div className="mt-5 flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
+              <button type="button" className="ui-btn ui-btn-secondary" onClick={() => setShowTermsModal(false)}>Close</button>
               <button
                 type="button"
-                onClick={() => setShowTermsModal(false)}
-                className="py-2 px-4 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
-              >
-                Close
-              </button>
-              <button
-                type="button"
+                className="ui-btn ui-btn-primary"
                 onClick={() => {
                   setAgreeTerms(true);
                   if (validationError.toLowerCase().includes('terms')) setValidationError('');
                   setShowTermsModal(false);
                 }}
-                className="py-2 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs"
               >
-                I Agree
+                I agree
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </AuthLayout>
   );
 }
-

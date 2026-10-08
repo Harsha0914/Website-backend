@@ -3,6 +3,9 @@ import os
 # Must be set BEFORE the app (and therefore app.config) is imported.
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+os.environ.setdefault("DEBUG", "false")                         # a developer's local .env must not change test results
+os.environ.setdefault("GOOGLE_PLACES_API_KEY", "")
+os.environ.setdefault("WHATSAPP_IS_TEST_MODE", "false")
 os.environ.setdefault("ADMIN_SECRET_CODE", "test-admin-code-123")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")   # never touch the committed shop.db
 os.environ["MONGODB_URI"] = ""                                 # never reach a real MongoDB in tests

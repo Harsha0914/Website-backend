@@ -500,7 +500,8 @@ ALL_CATEGORIES_TYPES = [t for batch in ALL_COMMERCIAL_CATEGORIES_BATCHES for t i
 GOOGLE_FIELD_MASK = (
     "places.id,places.displayName,places.formattedAddress,places.location,"
     "places.types,places.primaryType,places.websiteUri,places.googleMapsUri,"
-    "places.nationalPhoneNumber,places.rating,places.userRatingCount,places.businessStatus,places.photos"
+    "places.nationalPhoneNumber,places.internationalPhoneNumber,places.regularOpeningHours,"
+    "places.shortFormattedAddress,places.rating,places.userRatingCount,places.businessStatus,places.photos"
 )
 
 
@@ -1136,7 +1137,7 @@ def _parse_google_place(
     photo_url = _extract_google_photo_url(p.get("photos"), api_key)
 
     # Phone — real only, never fabricated
-    phone = _parse_real_phone(p.get("nationalPhoneNumber"))
+    phone = _parse_real_phone(p.get("internationalPhoneNumber") or p.get("nationalPhoneNumber"))
 
     place = PlaceData(
         place_id=place_id,
@@ -1163,9 +1164,64 @@ def _parse_google_place(
     return place, debug_entry
 
 
+
+def _classify_google_error(status_code: int, body_text: str) -> tuple[str, str]:
+    """Turn a Google Places HTTP error into (error_type, plain-English message). Never includes the key."""
+    import json
+    message, status, reasons = "", "", []
+    try:
+        err = (json.loads(body_text or "{}") or {}).get("error", {})
+        message = str(err.get("message", ""))
+        status = str(err.get("status", ""))
+        for d in err.get("details", []) or []:
+            if isinstance(d, dict) and d.get("reason"):
+                reasons.append(str(d["reason"]))
+    except Exception:
+        message = (body_text or "")[:160]
+    low = f"{message} {status} {' '.join(reasons)}".lower()
+
+    if status_code == 429 or "resource_exhausted" in low or "quota" in low:
+        return "GOOGLE_QUOTA", "Google Maps usage limit reached for now. Showing OpenStreetMap results instead."
+    if "api key not valid" in low or "api_key_invalid" in low or status_code == 401:
+        return "GOOGLE_KEY_INVALID", "The Google Maps key is not valid. Showing OpenStreetMap results instead."
+    if "billing" in low:
+        return "GOOGLE_BILLING", "Google Maps billing is not enabled for this key's project. Showing OpenStreetMap results instead."
+    if "service_disabled" in low or "has not been used" in low or "is disabled" in low or "not enabled" in low:
+        return "GOOGLE_API_DISABLED", "Places API (New) is not enabled for this key's project. Showing OpenStreetMap results instead."
+    if "referer" in low or "ip address" in low or "requests from this" in low or "api_key_http_referrer" in low:
+        return "GOOGLE_KEY_RESTRICTED", "The Google Maps key has restrictions that block this server. Showing OpenStreetMap results instead."
+    short = (message or f"HTTP {status_code}")[:140]
+    return "GOOGLE_UNAVAILABLE", f"Google Maps data is unavailable ({short}). Showing OpenStreetMap results instead."
+
+
+def test_google_key() -> tuple[bool, str]:
+    """One tiny live call to tell whether the configured Google key actually works."""
+    key = (settings.GOOGLE_PLACES_API_KEY or "").strip()
+    if not key:
+        return False, "No Google Maps key is configured."
+    try:
+        resp = httpx.post(
+            f"{GooglePlacesProvider.BASE_URL}:searchNearby",
+            json={
+                "includedTypes": ["restaurant"],
+                "maxResultCount": 1,
+                "locationRestriction": {"circle": {"center": {"latitude": 17.4485, "longitude": 78.3895}, "radius": 500.0}},
+            },
+            headers={"Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "places.id"},
+            timeout=8.0,
+        )
+    except Exception as e:
+        return False, f"Could not reach Google Maps ({type(e).__name__})."
+    if resp.status_code == 200:
+        return True, "Google Maps data is working."
+    return False, _classify_google_error(resp.status_code, resp.text)[1]
+
+
 class GooglePlacesProvider(PlacesProvider):
     BASE_URL = "https://places.googleapis.com/v1/places"
     _quota_exhausted_until: float = 0.0
+    _last_error_type: str | None = None
+    _last_error_message: str | None = None
 
     def __init__(self):
         self.api_key = settings.GOOGLE_PLACES_API_KEY
@@ -1183,7 +1239,15 @@ class GooglePlacesProvider(PlacesProvider):
         import concurrent.futures
 
         if time.time() < GooglePlacesProvider._quota_exhausted_until:
-            return OSMPlacesProvider().search_nearby(latitude, longitude, radius_km, category, keyword)
+            import dataclasses
+            osm_res, osm_dbg = OSMPlacesProvider().search_nearby(latitude, longitude, radius_km, category, keyword)
+            osm_dbg = dataclasses.replace(
+                osm_dbg,
+                error_type=GooglePlacesProvider._last_error_type or "GOOGLE_UNAVAILABLE",
+                error_message=GooglePlacesProvider._last_error_message
+                or "Google Maps data is temporarily unavailable. Showing OpenStreetMap results instead.",
+            )
+            return osm_res, osm_dbg
 
         debug = SearchDebugInfo(
             search_origin_lat=latitude,
@@ -1212,9 +1276,9 @@ class GooglePlacesProvider(PlacesProvider):
         # return instantly. For smaller towns or areas across India (e.g. Rayachoti, Kadapa, Chittoor, etc.),
         # do NOT artificially cap at 5 shops: query Google Places API live to discover dozens/hundreds of real shops!
         _fast_cat = canonical_category or (category.strip() if category else None)
-        _fast_db = _get_db_real_places(latitude, longitude, radius_km, _fast_cat, keyword)
+        _fast_db = [] if settings.PLACES_PREFER_LIVE_GOOGLE else _get_db_real_places(latitude, longitude, radius_km, _fast_cat, keyword)
         min_required = 60 if _fast_cat else 150
-        if len(_fast_db) >= min_required:
+        if (not settings.PLACES_PREFER_LIVE_GOOGLE) and len(_fast_db) >= min_required:
             now = time.time()
             fast_debug = SearchDebugInfo(
                 search_origin_lat=latitude,
@@ -1253,6 +1317,17 @@ class GooglePlacesProvider(PlacesProvider):
                 origins.append((pt_lat, pt_lng, sub_r))
 
         quota_hit = False
+        google_errors: list[tuple[str, str]] = []
+
+        def _record_google_error(resp) -> None:
+            nonlocal quota_hit
+            err_type, err_msg = _classify_google_error(resp.status_code, resp.text)
+            google_errors.append((err_type, err_msg))
+            GooglePlacesProvider._last_error_type = err_type
+            GooglePlacesProvider._last_error_message = err_msg
+            quota_hit = True  # stop hammering Google within this search
+            # quota: back off for an hour; configuration problems: retry again soon once fixed
+            GooglePlacesProvider._quota_exhausted_until = time.time() + (3600.0 if err_type == "GOOGLE_QUOTA" else 45.0)
 
         def _fetch_origin(origin_tuple: tuple[float, float, float]) -> list[dict]:
             nonlocal quota_hit
@@ -1301,9 +1376,8 @@ class GooglePlacesProvider(PlacesProvider):
                             if n_resp.status_code == 200:
                                 for p in n_resp.json().get("places", []):
                                     found_places.append(p)
-                            elif n_resp.status_code in (429, 403):
-                                quota_hit = True
-                                GooglePlacesProvider._quota_exhausted_until = time.time() + 3600.0
+                            elif n_resp.status_code != 200:
+                                _record_google_error(n_resp)
                         except Exception:
                             pass
                     elif not keyword:
@@ -1326,9 +1400,8 @@ class GooglePlacesProvider(PlacesProvider):
                                 if n_resp.status_code == 200:
                                     for p in n_resp.json().get("places", []):
                                         found_places.append(p)
-                                elif n_resp.status_code in (429, 403):
-                                    quota_hit = True
-                                    GooglePlacesProvider._quota_exhausted_until = time.time() + 3600.0
+                                elif n_resp.status_code != 200:
+                                    _record_google_error(n_resp)
                                     break
                             except Exception:
                                 pass
@@ -1347,9 +1420,8 @@ class GooglePlacesProvider(PlacesProvider):
                             if resp.status_code == 200:
                                 for p in resp.json().get("places", []):
                                     found_places.append(p)
-                            elif resp.status_code in (429, 403):
-                                quota_hit = True
-                                GooglePlacesProvider._quota_exhausted_until = time.time() + 3600.0
+                            elif resp.status_code != 200:
+                                _record_google_error(resp)
                                 break
                         except Exception:
                             pass
@@ -1378,14 +1450,21 @@ class GooglePlacesProvider(PlacesProvider):
         except Exception as e:
             print(f"Google Places multi-origin search error: {e}")
 
-        # Augment with verified genuine database places strictly within radius
-        db_real = _get_db_real_places(latitude, longitude, radius_km, canonical_category or category, keyword)
-        for dp in db_real:
-            if dp.place_id not in all_places_map:
-                all_places_map[dp.place_id] = dp
+        # Saved rows only fill in when Google gave us nothing (or live-Google mode is switched off):
+        # mixing old / OpenStreetMap rows into a live Google answer is how stale details leaked in.
+        google_found = len(all_places_map)
+        if not (settings.PLACES_PREFER_LIVE_GOOGLE and google_found > 0):
+            db_real = _get_db_real_places(latitude, longitude, radius_km, canonical_category or category, keyword)
+            for dp in db_real:
+                if dp.place_id not in all_places_map:
+                    all_places_map[dp.place_id] = dp
 
         if len(all_places_map) == 0:
-            return OSMPlacesProvider().search_nearby(latitude, longitude, radius_km, category, keyword)
+            import dataclasses
+            osm_res, osm_dbg = OSMPlacesProvider().search_nearby(latitude, longitude, radius_km, category, keyword)
+            if google_errors:
+                osm_dbg = dataclasses.replace(osm_dbg, error_type=google_errors[0][0], error_message=google_errors[0][1])
+            return osm_res, osm_dbg
 
         # Strict radius enforcement & exact origin distance calculation
         valid_results: list[PlaceData] = []
@@ -1420,8 +1499,14 @@ class GooglePlacesProvider(PlacesProvider):
         sorted_results = deduped_results
 
 
-        debug.error_message = None
-        debug.error_type = None
+        if google_found == 0 and google_errors:
+            # Google said no and saved rows filled in: tell the user why, honestly.
+            debug.error_type, debug.error_message = google_errors[0]
+            debug.error_message = debug.error_message.replace("OpenStreetMap results", "saved results")
+            debug.provider_used = "SavedData"
+        else:
+            debug.error_message = None
+            debug.error_type = None
         debug.google_api_raw_count = raw_count
         debug.results_after_filter = len(sorted_results)
         debug.rejected_count = sum(1 for e in debug.results_detail if not e.get("included"))

@@ -52,3 +52,39 @@ def test_whatsapp_settings_api(client, admin_token):
     assert data["business_account_id"] == "2912980445715643"
     # credentials come from the environment now; no hardcoded default is ever returned
     assert data["lad_auth_email"] == (settings.LAD_AUTH_EMAIL or "")
+
+
+def test_admin_copy_is_on_by_default_and_toggleable(monkeypatch):
+    from app.config import Settings
+    assert Settings().WHATSAPP_ADMIN_COPY_NUMBER == "+917780181920"
+    monkeypatch.setattr(settings, "WHATSAPP_ADMIN_COPY_NUMBER", "")
+    assert MrLadWhatsAppClient._admin_copy_number() is None
+
+
+def test_admin_copy_creates_the_missing_admin_thread_then_delivers(monkeypatch):
+    """If the admin number has no Mr LAD thread yet, it is created and the copy still arrives."""
+    calls = []
+
+    class Resp:
+        def __init__(self, status=200, body=None):
+            self.status_code, self._body, self.text = status, body or {}, ""
+        def json(self):
+            return self._body
+
+    def fake_post(url, **kw):
+        calls.append(url)
+        if url.endswith("/api/leads/import"):
+            return Resp(200, {"data": {"conversation_ids": ["admin-thread-1"]}})
+        if url.endswith("/api/conversations/admin-thread-1/messages"):
+            return Resp(200, {"success": True})
+        return Resp(404)
+
+    monkeypatch.setattr(settings, "WHATSAPP_ADMIN_COPY_NUMBER", "+917780181920")
+    monkeypatch.setattr(MrLadWhatsAppClient, "get_token", classmethod(lambda cls, force_refresh=False: ("tok", None)))
+    monkeypatch.setattr(MrLadWhatsAppClient, "_find_conversation_id", classmethod(lambda cls, phone, token: None))
+    monkeypatch.setattr("app.services.mr_lad_client.requests.post", fake_post)
+    monkeypatch.setattr("app.services.mr_lad_client.time.sleep", lambda s: None)
+
+    MrLadWhatsAppClient.sync_to_admin("Hello pitch", "Some Shop", "+919876543210", send_flyer=False)
+    assert any(u.endswith("/api/leads/import") for u in calls)
+    assert any(u.endswith("/api/conversations/admin-thread-1/messages") for u in calls)

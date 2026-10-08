@@ -421,7 +421,11 @@ export default function WhatsAppHubPage() {
 
                           <div className={`flex items-center justify-end gap-1 text-[9px] ${isIncoming ? 'text-slate-400' : 'text-emerald-200'}`}>
                             <span>{new Date(m.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            {!isIncoming && <CheckCheck className="w-3 h-3 text-cyan-300" />}
+                            {!isIncoming && (m.status === 'failed' || m.status === 'simulated'
+                              ? <span className="font-bold text-amber-200" title={m.status === 'simulated' ? 'Test mode: this message was NOT sent to WhatsApp' : 'This message could not be sent'}>
+                                  {m.status === 'simulated' ? 'Not sent (test mode)' : 'Not sent'}
+                                </span>
+                              : <CheckCheck className="w-3 h-3 text-cyan-300" />)}
                           </div>
                         </div>
                       </div>

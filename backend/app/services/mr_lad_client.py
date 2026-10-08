@@ -314,7 +314,24 @@ class MrLadWhatsAppClient:
 
             admin_conv_id = cls._find_conversation_id(admin_phone, token)
             if not admin_conv_id:
-                logger.warning("[Admin WhatsApp Sync] No conversation for admin copy number; skipping")
+                # The admin number has no thread in Mr LAD yet: create it (same way shop threads are created)
+                try:
+                    api_base_prov = settings.LAD_API_BASE_URL.rstrip("/")
+                    imp = requests.post(
+                        f"{api_base_prov}/api/leads/import",
+                        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                        json={"leads": [{"name": "Lexon IT (copies)", "phone": admin_phone, "company": "Lexon IT"}]},
+                        timeout=20,
+                    )
+                    if imp.status_code == 200:
+                        ids = (imp.json().get("data") or {}).get("conversation_ids") or []
+                        admin_conv_id = ids[0] if ids else None
+                except Exception as prov_err:
+                    logger.warning(f"[Admin WhatsApp Sync] Could not create admin thread: {prov_err}")
+                if not admin_conv_id:
+                    admin_conv_id = cls._find_conversation_id(admin_phone, token)
+            if not admin_conv_id:
+                logger.warning("[Admin WhatsApp Sync] No conversation for the admin copy number and it could not be created; copy skipped")
                 return
 
             flyers = cls._resolve_flyer_paths()

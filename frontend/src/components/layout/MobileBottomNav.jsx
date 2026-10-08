@@ -1,11 +1,11 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Home,
-  Store,
-  LayoutDashboard,
   Search,
-  User,
+  List,
+  MessageCircle,
+  LogIn,
+  UserPlus,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
@@ -25,15 +25,13 @@ export default function MobileBottomNav() {
 
   const items = isAuthenticated
     ? [
-        { path: '/',          icon: Home,            label: 'Home' },
-        { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { path: '/shops',     icon: Search,          label: 'Shops' },
-        { path: '/shop',      icon: Store,           label: 'Browse', hideActive: true },
+        { path: '/dashboard', icon: Search,        label: 'Find shops' },
+        { path: '/shops',     icon: List,          label: 'Results' },
+        { path: '/whatsapp',  icon: MessageCircle, label: 'WhatsApp' },
       ]
     : [
-        { path: '/',          icon: Home,            label: 'Home' },
-        { path: '/login',     icon: User,            label: 'Sign In' },
-        { path: '/register',  icon: Store,           label: 'Register' },
+        { path: '/login',     icon: LogIn,         label: 'Sign in' },
+        { path: '/register',  icon: UserPlus,      label: 'Create account' },
       ];
 
   return (

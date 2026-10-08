@@ -332,6 +332,9 @@ def test_google_key_config_is_admin_only_and_never_written_to_disk(client, user_
         ok = client.post("/api/businesses/config/google-key", headers=_auth(admin_token), json={"api_key": "A" * 30})
         assert ok.status_code == 200
         assert not any(p.endswith(".env") for p in opened)
+        monkeypatch.setattr("app.services.places_service.test_google_key", lambda: (True, "ok"))
+        from app.routers import businesses as _b
+        _b._KEY_TEST_CACHE.update(at=0.0, ok=None, message="")
         status = client.get("/api/businesses/config/google-key-status", headers=_auth(admin_token)).json()
         assert status["masked_key"] == "..." + "A" * 4
     finally:

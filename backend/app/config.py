@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     # No default: without a key the OpenStreetMap provider is used.
     GOOGLE_PLACES_API_KEY: str = ""
     USE_MOCK_PLACES: bool = False
+    # When a Google key is configured, search Google live and never replace its answer with saved
+    # (possibly stale or OpenStreetMap) rows. Set false only to save Google quota.
+    PLACES_PREFER_LIVE_GOOGLE: bool = True
 
     # Gemini AI
     GEMINI_API_KEY: str = ""
@@ -120,8 +123,9 @@ class Settings(BaseSettings):
     WHATSAPP_POLLER_ENABLED: bool = True
     WHATSAPP_POLL_INTERVAL_SECONDS: int = 30
     WHATSAPP_REPLY_MAX_AGE_MINUTES: int = 15       # never auto-reply to inbound messages older than this
-    # Optional: mirror outbound pitches to this admin number (e.g. +917780181920). Empty = disabled.
-    WHATSAPP_ADMIN_COPY_NUMBER: str = ""
+    # Every pitch is also copied into this WhatsApp Business number's chat so the team sees it.
+    # (This was always on; the default keeps it on. Set it to an empty value to switch it off.)
+    WHATSAPP_ADMIN_COPY_NUMBER: str = "+917780181920"
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60

@@ -506,7 +506,11 @@ export function WhatsAppChatModal({ business, isOpen, onClose }) {
                             minute: '2-digit',
                           })}
                         </span>
-                        {!isShopOwner && <CheckCheck className="w-3.5 h-3.5" />}
+                        {!isShopOwner && (msg.status === 'failed' || msg.status === 'simulated'
+                          ? <span className="font-bold" title={msg.status === 'simulated' ? 'Test mode: this message was NOT sent to WhatsApp' : 'This message could not be sent'}>
+                              {msg.status === 'simulated' ? 'Not sent (test mode)' : 'Not sent'}
+                            </span>
+                          : <CheckCheck className="w-3.5 h-3.5" />)}
                       </div>
                     </div>
                   </div>

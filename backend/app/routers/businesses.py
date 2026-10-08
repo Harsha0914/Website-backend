@@ -146,7 +146,8 @@ def get_nearby_businesses(
             )
     except Exception as ex:
         print(f"External places API search warning: {ex}. Serving database cached businesses.")
-        db_bizs = db.query(Business).all()
+        # never fall back to the hand-written 'verified_seed' sample shops: they are not real data
+        db_bizs = db.query(Business).filter((Business.source.is_(None)) | (Business.source != 'verified_seed')).all()
         seen_db_keys = set()
         for b in db_bizs:
             b_status = (b.business_status or "OPERATIONAL").upper().strip()
@@ -566,11 +567,28 @@ from app.config import settings
 class GoogleKeyRequest(BaseModel):
     api_key: str
 
-@router.get("/config/google-key-status", dependencies=[Depends(require_admin)])
-def get_google_key_status():
+_KEY_TEST_CACHE: dict = {"at": 0.0, "ok": None, "message": ""}
+
+
+def _cached_key_test(max_age_seconds: float = 300.0):
+    import time
+    from app.services.places_service import test_google_key
+    now = time.time()
+    if _KEY_TEST_CACHE["ok"] is None or now - _KEY_TEST_CACHE["at"] > max_age_seconds:
+        ok, message = test_google_key()
+        _KEY_TEST_CACHE.update(at=now, ok=ok, message=message)
+    return _KEY_TEST_CACHE["ok"], _KEY_TEST_CACHE["message"]
+
+
+@router.get("/config/google-key-status")
+def get_google_key_status(current_user=Depends(get_current_user)):
+    """Is a Google Maps key set, and does Google actually accept it? (any signed-in user)"""
     has_key = bool(settings.GOOGLE_PLACES_API_KEY and settings.GOOGLE_PLACES_API_KEY.strip())
-    masked = ("..." + settings.GOOGLE_PLACES_API_KEY.strip()[-4:]) if has_key else ""
-    return {"connected": has_key, "masked_key": masked}
+    working, message = (_cached_key_test() if has_key else (False, "No Google Maps key is configured."))
+    out = {"connected": has_key, "working": bool(working), "message": message}
+    if has_key and getattr(current_user, "role", None) is not None and current_user.role.value == "ADMIN":
+        out["masked_key"] = "..." + settings.GOOGLE_PLACES_API_KEY.strip()[-4:]
+    return out
 
 @router.post("/config/google-key", dependencies=[Depends(require_admin)])
 def update_google_key(req: GoogleKeyRequest):
@@ -583,6 +601,7 @@ def update_google_key(req: GoogleKeyRequest):
     if new_key and not re.fullmatch(r"[A-Za-z0-9_\-]{20,100}", new_key):
         raise HTTPException(status_code=400, detail="That does not look like a valid API key.")
     settings.GOOGLE_PLACES_API_KEY = new_key
+    _KEY_TEST_CACHE.update(at=0.0, ok=None, message="")
     return {"status": "success", "connected": bool(new_key)}
 
 @router.get("/{business_id}", response_model=BusinessOut)

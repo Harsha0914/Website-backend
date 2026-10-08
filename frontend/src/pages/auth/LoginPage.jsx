@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { Store, User, Mail, Lock, ArrowRight, ArrowLeft, AlertCircle, HelpCircle, Eye, EyeOff, CheckCircle, KeyRound } from 'lucide-react';
+import { ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import api, { getBaseUrl } from '../../services/api';
-import MobileBottomNav from '../../components/layout/MobileBottomNav';
+import AuthLayout from '../../components/layout/AuthLayout';
 
 export default function LoginPage() {
   const { login, sendPasswordOtp, verifyOtpAndResetPassword, loading, error, isAuthenticated, user } = useAuthStore();
@@ -157,300 +157,181 @@ export default function LoginPage() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50/60 via-slate-50 to-indigo-50/40 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
-      
-      {/* Brand Header */}
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-3">
-        <Link to="/" className="inline-flex items-center gap-2.5 group">
-          <div className="p-2.5 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl shadow-md shadow-blue-500/25 group-hover:scale-105 transition-transform">
-            <Store className="w-6 h-6" />
-          </div>
-          <span className="text-slate-900 dark:text-white font-black text-2xl tracking-tight">
-            Website <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Presence</span> Detection
-          </span>
-        </Link>
-
-        <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight pt-2">
-          Sign in to your account
-        </h2>
-        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-sm mx-auto font-medium">
-          Access your dashboard to discover shops and check online website presence
-        </p>
-      </div>
-
-      {/* Main Form Card */}
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl py-8 px-6 sm:px-10 shadow-xl shadow-blue-500/5 dark:shadow-none rounded-3xl border border-slate-200/80 dark:border-slate-800 space-y-5">
-          
-          {(validationError || error) && (
-            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 space-y-2.5">
-              <div className="flex items-center gap-2.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{validationError || (typeof error === 'string' ? error : JSON.stringify(error))}</span>
-              </div>
-              {!validationError && typeof error === 'string' && error.toLowerCase().includes('not found') && (
-                <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/60">
-                  <Link
-                    to={`/register?username=${encodeURIComponent(username)}`}
-                    className="block w-full py-2.5 px-3 text-center text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors"
-                  >
-                    Register / Create Account Now →
-                  </Link>
-                </div>
-              )}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username or Email Address */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Username or Email</label>
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value);
-                    setValidationError('');
-                  }}
-                  placeholder="Enter your username or email"
-                  className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Password</label>
-                <button
-                  type="button"
-                  onClick={openForgotModal}
-                  className="text-[11px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 transition-colors"
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setValidationError('');
-                  }}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 px-4 text-xs font-black text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-75"
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
-                  <span>Signing in...</span>
-                </>
-              ) : (
-                <>
-                  <span>Sign In</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Registration Links */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-center space-y-3">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Don't have an account yet?</p>
-            <div className="flex items-center justify-center gap-2.5">
-              <Link
-                to="/register?role=user"
-                className="flex-1 py-2 px-3 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-xl border border-blue-200 dark:border-blue-900/60 transition-colors text-center"
-              >
-                User Register
-              </Link>
-              <Link
-                to="/register?role=admin"
-                className="flex-1 py-2 px-3 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 rounded-xl border border-amber-200 dark:border-amber-900/60 transition-colors text-center"
-              >
-                Admin Register
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* Back to Overview Button */}
-        <div className="mt-6 text-center">
-          <Link
-            to="/landing"
-            className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 px-4 py-2.5 rounded-full transition-all shadow-xs"
-          >
-            <ArrowLeft className="w-4 h-4 text-blue-600" />
-            <span>Explore Overview &amp; Features</span>
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to find nearby shops and see which ones need a website."
+      footer={
+        <p className="ui-help">
+          New here?{' '}
+          <Link to="/register?role=user" className="font-semibold underline" style={{ color: 'var(--ui-primary-text)' }}>
+            Create an account
           </Link>
-        </div>
-      </div>
-
-      {/* Forgot / Reset Password Modal matching Image 2 */}
-      {showForgotModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-pink-50 dark:bg-pink-950/60 text-[#d92672] dark:text-pink-400 rounded-xl border border-pink-200/60 dark:border-pink-900/60">
-                  <KeyRound className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-slate-900 dark:text-white font-black text-lg tracking-tight">Reset Password</h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">We will e-mail you a one-time code</p>
-                </div>
+          <span className="mx-2" aria-hidden="true">·</span>
+          <Link to="/register?role=admin" className="underline">Register as administrator</Link>
+        </p>
+      }
+    >
+      {(validationError || error) && (
+        <div className="ui-notice ui-notice-error mb-5" role="alert">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+          <div>
+            <span>{validationError || (typeof error === 'string' ? error : 'Something went wrong. Please try again.')}</span>
+            {!validationError && typeof error === 'string' && error.toLowerCase().includes('not found') && (
+              <div className="mt-2">
+                <Link to={`/register?username=${encodeURIComponent(username)}`} className="font-semibold underline">
+                  Create an account instead
+                </Link>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowForgotModal(false);
-                  setResetError('');
-                  setResetSuccess('');
-                }}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-bold p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                ✕
-              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <div>
+          <label htmlFor="login-username" className="ui-label">Username or email</label>
+          <input
+            id="login-username"
+            type="text"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => { setUsername(e.target.value); setValidationError(''); }}
+            placeholder="you@example.com"
+            className="ui-input"
+          />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label htmlFor="login-password" className="ui-label !mb-0">Password</label>
+            <button type="button" onClick={openForgotModal} className="text-sm font-semibold" style={{ color: 'var(--ui-primary-text)' }}>
+              Forgot password?
+            </button>
+          </div>
+          <div className="relative">
+            <input
+              id="login-password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setValidationError(''); }}
+              placeholder="Your password"
+              className="ui-input"
+              style={{ paddingRight: 76 }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 ui-btn ui-btn-ghost ui-btn-sm"
+              aria-pressed={showPassword}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" disabled={loading} className="ui-btn ui-btn-primary ui-btn-lg ui-btn-block">
+          {loading ? 'Signing in…' : 'Sign in'}
+          {!loading && <ArrowRight className="h-5 w-5" aria-hidden="true" />}
+        </button>
+      </form>
+
+      {/* Reset password dialog: e-mail, then code, then new password */}
+      {showForgotModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ background: 'rgba(15, 23, 42, 0.5)' }}
+          onClick={(e) => e.target === e.currentTarget && setShowForgotModal(false)}
+        >
+          <div role="dialog" aria-modal="true" aria-labelledby="reset-title" className="ui-card w-full sm:max-w-md p-6 rounded-b-none sm:rounded-b-[14px]" style={{ boxShadow: 'var(--ui-shadow-lg)' }}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 id="reset-title" className="ui-h2">Reset your password</h2>
+                <p className="ui-help mt-1">
+                  {resetStep === 'request'
+                    ? 'Enter your e-mail and we will send you a one-time code.'
+                    : 'Enter the code from your e-mail and choose a new password.'}
+                </p>
+              </div>
+              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" style={{ width: 40, padding: 0 }} onClick={() => setShowForgotModal(false)} aria-label="Close">✕</button>
             </div>
 
-            {/* Success Alert */}
             {resetSuccess && (
-              <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 flex items-center gap-2.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div className="ui-notice ui-notice-success mt-4" role="status">
+                <CheckCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
                 <span>{resetSuccess}</span>
               </div>
             )}
-
-            {/* Error Alert */}
             {resetError && (
-              <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 flex items-center gap-2.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <div className="ui-notice ui-notice-error mt-4" role="alert">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
                 <span>{resetError}</span>
               </div>
             )}
 
-            {/* Reset Password: e-mail a one-time code, then set a new password */}
-            <form onSubmit={resetStep === 'request' ? handleRequestOtp : handleVerifyAndReset} className="space-y-4">
-              {/* Email Address */}
+            <form onSubmit={resetStep === 'request' ? handleRequestOtp : handleVerifyAndReset} className="mt-5 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type="email"
-                    required
-                    disabled={resetStep === 'verify'}
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    className="w-full pl-10 pr-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500/20 focus:border-[#d92672] transition-all disabled:opacity-60"
-                  />
-                </div>
+                <label htmlFor="reset-email" className="ui-label">E-mail address</label>
+                <input
+                  id="reset-email"
+                  type="email"
+                  required
+                  disabled={resetStep === 'verify'}
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  className="ui-input"
+                />
               </div>
 
               {resetStep === 'verify' && (
                 <>
-                  {/* One-time code */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                      Verification code
-                    </label>
+                    <label htmlFor="reset-otp" className="ui-label">Code from your e-mail</label>
                     <input
+                      id="reset-otp"
                       type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       required
                       value={resetOtp}
                       onChange={(e) => setResetOtp(e.target.value)}
-                      placeholder="6-digit code from your email"
-                      className="w-full px-3.5 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500/20 focus:border-[#d92672] transition-all tracking-widest"
+                      placeholder="6-digit code"
+                      className="ui-input tracking-widest"
                     />
                   </div>
-
-                  {/* New password */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                      New password
-                    </label>
+                    <label htmlFor="reset-new" className="ui-label">New password</label>
                     <div className="relative">
                       <input
+                        id="reset-new"
                         type={showResetPass ? 'text' : 'password'}
+                        autoComplete="new-password"
                         required
                         value={resetNewPass}
                         onChange={(e) => setResetNewPass(e.target.value)}
-                        placeholder="8+ chars, upper, lower and a number"
-                        className="w-full px-3.5 pr-10 py-3 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500/20 focus:border-[#d92672] transition-all"
+                        className="ui-input"
+                        style={{ paddingRight: 76 }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowResetPass(!showResetPass)}
-                        className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                      >
-                        {showResetPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      <button type="button" onClick={() => setShowResetPass(!showResetPass)} className="absolute right-2 top-1/2 -translate-y-1/2 ui-btn ui-btn-ghost ui-btn-sm" aria-pressed={showResetPass}>
+                        {showResetPass ? 'Hide' : 'Show'}
                       </button>
                     </div>
+                    <p className="ui-help mt-1.5">At least 8 characters, with an upper-case letter, a lower-case letter and a number.</p>
                   </div>
                 </>
               )}
 
-              {/* Action Buttons */}
-              <div className="pt-2 space-y-2.5">
-                <button
-                  type="submit"
-                  disabled={resetLoading}
-                  className="w-full py-3.5 px-4 text-xs font-black text-white bg-[#d92672] hover:bg-[#c2185b] rounded-xl shadow-md shadow-pink-500/25 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-75 cursor-pointer"
-                >
-                  {resetLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
-                      <span>Please wait...</span>
-                    </>
-                  ) : (
-                    <span>{resetStep === 'request' ? 'Send verification code' : 'Reset password'}</span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowForgotModal(false)}
-                  className="w-full py-2.5 px-4 text-xs font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-                >
-                  Cancel
+              <div className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pt-2">
+                <button type="button" className="ui-btn ui-btn-secondary" onClick={() => setShowForgotModal(false)}>Cancel</button>
+                <button type="submit" disabled={resetLoading} className="ui-btn ui-btn-primary">
+                  {resetLoading ? 'Please wait…' : resetStep === 'request' ? 'Send code' : 'Set new password'}
                 </button>
               </div>
             </form>
-
           </div>
         </div>
       )}
-      <MobileBottomNav />
-    </div>
+    </AuthLayout>
   );
 }
-
-
