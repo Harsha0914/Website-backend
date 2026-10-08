@@ -123,9 +123,10 @@ class Settings(BaseSettings):
     WHATSAPP_POLLER_ENABLED: bool = True
     WHATSAPP_POLL_INTERVAL_SECONDS: int = 30
     WHATSAPP_REPLY_MAX_AGE_MINUTES: int = 15       # never auto-reply to inbound messages older than this
-    # Every pitch is also copied into this WhatsApp Business number's chat so the team sees it.
-    # (This was always on; the default keeps it on. Set it to an empty value to switch it off.)
-    WHATSAPP_ADMIN_COPY_NUMBER: str = "+917780181920"
+    # Off by default: a pitch goes ONLY to the shop it was sent to. (Messages sent through Mr LAD already
+    # appear in the Mr LAD inbox and the WhatsApp Business account.) If set, a real copy of every pitch is
+    # also sent into this number's chat, which is why it must stay empty unless that is wanted.
+    WHATSAPP_ADMIN_COPY_NUMBER: str = ""
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60

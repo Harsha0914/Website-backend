@@ -8,6 +8,10 @@ os.environ.setdefault("GOOGLE_PLACES_API_KEY", "")
 os.environ.setdefault("WHATSAPP_IS_TEST_MODE", "false")
 os.environ.setdefault("ADMIN_SECRET_CODE", "test-admin-code-123")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")   # never touch the committed shop.db
+# Tests must never reach a real service, whatever the developer keeps in a local .env
+for _name in ("LAD_AUTH_PASSWORD", "LAD_API_TOKEN", "OPENAI_API_KEY", "WHATSAPP_ADMIN_COPY_NUMBER"):
+    os.environ[_name] = ""
+os.environ["GOOGLE_PLACES_API_KEY"] = ""
 os.environ["MONGODB_URI"] = ""                                 # never reach a real MongoDB in tests
 
 import pytest

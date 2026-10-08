@@ -88,6 +88,9 @@ export const QUICK_PLACES = [
   { name: 'Delhi NCR', lat: 28.6139, lng: 77.2090, group: 'Major Metros' },
 ];
 
+// A shop can be reached on WhatsApp only when it has a real phone number.
+const hasPhone = (b) => String(b?.phone || b?.phone_number || '').replace(/\D/g, '').length >= 8;
+
 const TAB_CONFIG = {
   all:              { color: '#6366f1', bg: '#ede9fe', label: 'All Shops' },
   websites:         { color: '#10b981', bg: '#d1fae5', label: 'Website Available' },
@@ -129,6 +132,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
   const [modalKey,     setModalKey]     = useState(0);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [selectedRating, setSelectedRating] = useState('all');
+  const [phoneFilter, setPhoneFilter] = useState('all'); // 'all' | 'with' | 'without'
   const [sortBy, setSortBy] = useState('rating-desc');
 
   useEffect(() => { 
@@ -228,6 +232,8 @@ export default function ShopsPage({ defaultTab = 'all' }) {
   // Filter and sort businesses ratings-wise
   const filteredBusinesses = useMemo(() => {
     let result = baseFilteredBusinesses.filter(b => {
+      if (phoneFilter === 'with' && !hasPhone(b)) return false;
+      if (phoneFilter === 'without' && hasPhone(b)) return false;
       if (selectedRating === 'all') return true;
       const r = b.rating;
       if (selectedRating === 'unrated') {
@@ -267,16 +273,22 @@ export default function ShopsPage({ defaultTab = 'all' }) {
       // default 'distance'
       return (a.distance_km || 999) - (b.distance_km || 999);
     });
-  }, [baseFilteredBusinesses, selectedRating, sortBy]);
+  }, [baseFilteredBusinesses, selectedRating, sortBy, phoneFilter]);
 
   // Shops without website available for bulk outreach
   const noWebsiteShops = React.useMemo(() => {
-    return filteredBusinesses.filter(b => b.website_status === 'NO_WEBSITE' || b.website_status === 'WEBSITE_UNREACHABLE');
+    return filteredBusinesses.filter(b => (b.website_status === 'NO_WEBSITE' || b.website_status === 'WEBSITE_UNREACHABLE') && hasPhone(b));
   }, [filteredBusinesses]);
 
+  // Only shops with a phone number can be messaged.
   const broadcastTargetList = activeTab === 'no-websites' 
-    ? filteredBusinesses 
-    : (noWebsiteShops.length > 0 ? noWebsiteShops : filteredBusinesses);
+    ? filteredBusinesses.filter(hasPhone)
+    : (noWebsiteShops.length > 0 ? noWebsiteShops : filteredBusinesses.filter(hasPhone));
+
+  const phoneCounts = React.useMemo(() => {
+    const withPhone = baseFilteredBusinesses.filter(hasPhone).length;
+    return { all: baseFilteredBusinesses.length, with: withPhone, without: baseFilteredBusinesses.length - withPhone };
+  }, [baseFilteredBusinesses]);
 
   const tabs = [
     { id: 'all',              label: 'All Shops',          count: total,           icon: Store,        path: '/shops' },
@@ -378,6 +390,29 @@ export default function ShopsPage({ defaultTab = 'all' }) {
               );
             })}
           </div>
+
+          {/* Phone split: shops we can message vs. shops with no number listed */}
+          {activeTab === 'no-websites' && (
+            <div role="group" aria-label="Phone number" className="flex flex-wrap items-center gap-2">
+              <span className="ui-help" style={{ marginRight: 4 }}>Phone number:</span>
+              {[
+                { id: 'all', label: 'All shops', count: phoneCounts.all },
+                { id: 'with', label: 'With phone number', count: phoneCounts.with },
+                { id: 'without', label: 'No phone number', count: phoneCounts.without },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  aria-pressed={phoneFilter === f.id}
+                  onClick={() => setPhoneFilter(f.id)}
+                  className={`ui-chip ${phoneFilter === f.id ? 'ui-chip-active' : ''}`}
+                >
+                  {f.label}
+                  <span className="ui-badge ui-badge-neutral" style={{ padding: '1px 8px' }}>{f.count}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Filters */}
           <section className="ui-card ui-card-pad space-y-4" aria-label="Filters">

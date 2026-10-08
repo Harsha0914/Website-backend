@@ -55,8 +55,6 @@ services:
         sync: false
       - key: WHATSAPP_APP_SECRET
         sync: false
-      - key: WHATSAPP_ADMIN_COPY_NUMBER
-        value: "+917780181920"
       - key: WHATSAPP_DAILY_SEND_LIMIT
         value: "200"
       - key: WHATSAPP_MAX_BROADCAST_BATCH

@@ -54,11 +54,14 @@ def test_whatsapp_settings_api(client, admin_token):
     assert data["lad_auth_email"] == (settings.LAD_AUTH_EMAIL or "")
 
 
-def test_admin_copy_is_on_by_default_and_toggleable(monkeypatch):
+def test_admin_copy_is_off_by_default_and_toggleable(monkeypatch):
     from app.config import Settings
-    assert Settings().WHATSAPP_ADMIN_COPY_NUMBER == "+917780181920"
+    # a pitch must go only to the shop it was sent to unless a copy number is explicitly configured
+    assert Settings(_env_file=None).WHATSAPP_ADMIN_COPY_NUMBER == ""
     monkeypatch.setattr(settings, "WHATSAPP_ADMIN_COPY_NUMBER", "")
     assert MrLadWhatsAppClient._admin_copy_number() is None
+    monkeypatch.setattr(settings, "WHATSAPP_ADMIN_COPY_NUMBER", "+917780181920")
+    assert MrLadWhatsAppClient._admin_copy_number() == "+917780181920"
 
 
 def test_admin_copy_creates_the_missing_admin_thread_then_delivers(monkeypatch):
