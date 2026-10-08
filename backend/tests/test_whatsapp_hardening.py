@@ -347,7 +347,7 @@ def test_broadcast_reports_truthful_status_in_test_mode(client, user_token, db_s
     assert body["total_sent"] == 0
     msg = db_session.query(WhatsAppMessage).first()
     assert msg.status == "simulated"
-    assert "Reply STOP to opt out." in msg.message_body
+    assert "Reply STOP to opt out." not in msg.message_body  # footer removed on request; STOP replies are still honoured
 
 
 def test_broadcast_skips_opted_out_numbers(client, user_token, db_session):

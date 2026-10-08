@@ -16,7 +16,6 @@ from app.services.whatsapp_guard import (
     SendBlocked,
     can_message,
     delivery_status,
-    ensure_opt_out_footer,
     is_valid_phone,
 )
 from app.models.whatsapp import (
@@ -601,11 +600,10 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
         "Hello {shop_name},\n\n"
         "This is Lexon IT. We help businesses grow online by building professional websites, web applications, and mobile apps tailored to their needs.\n\n"
         "We noticed that {shop_name} doesn’t currently have a website. Today, customers often search online before choosing a business or service. A professional online presence can help you showcase your products or services, share important information, build trust, and make it easier for customers to contact you — 24/7.\n\n"
-        "Whether you need a simple website, an online booking or ordering system, a custom web application, or a mobile app, our team can build it for you at an affordable price."
+        "Whether you need a simple website, an online booking or ordering system, a custom web application, or a mobile app, our team can build it for you at an affordable price.\n\nhttps://easybillbro.com/"
     )
 
     template = payload.custom_message.strip() if payload.custom_message and payload.custom_message.strip() else default_template
-    template = ensure_opt_out_footer(template)
 
     results = []
     sent_count = 0
