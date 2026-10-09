@@ -98,3 +98,34 @@ def test_only_your_own_chats_are_counted(client, db_session):
     assert mine["chats"] == 1 and mine["periods"]["last_30_days"]["sent"] == 1
     assert theirs["chats"] == 0 and theirs["periods"]["last_30_days"]["sent"] == 0
     assert client.get("/api/whatsapp/summary").status_code in (401, 403)
+
+
+def test_day_detail_lists_the_chats_active_on_that_indian_day(client, db_session):
+    me = _user(db_session, "Me", "me@example.test")
+    a = _chat(db_session, me, "919000000001", "Shop A")
+    b = _chat(db_session, me, "919000000002", "Shop B")
+    c = _chat(db_session, me, "919000000003", "Shop C")
+    _msg(db_session, a, OUT, "sent", datetime(2026, 10, 8, 19, 0))     # 00:30 IST on 9 Oct
+    _msg(db_session, a, IN, "received", datetime(2026, 10, 9, 3, 0))   # 08:30 IST on 9 Oct
+    _msg(db_session, b, OUT, "failed", datetime(2026, 10, 9, 5, 0))    # 10:30 IST on 9 Oct
+    _msg(db_session, c, OUT, "sent", datetime(2026, 10, 8, 18, 0))     # 23:30 IST on 8 Oct: another day
+
+    hdr = {"Authorization": f"Bearer {create_access_token(me.id)}"}
+    nine = client.get("/api/whatsapp/day?date=2026-10-09", headers=hdr).json()
+    assert nine["chat_count"] == 2 and {x["shop_name"] for x in nine["chats"]} == {"Shop A", "Shop B"}
+    assert (nine["sent"], nine["received"], nine["failed"]) == (1, 1, 1)
+    eight = client.get("/api/whatsapp/day?date=2026-10-08", headers=hdr).json()
+    assert [x["shop_name"] for x in eight["chats"]] == ["Shop C"]
+    assert client.get("/api/whatsapp/day?date=2026-10-01", headers=hdr).json()["chats"] == []
+
+
+def test_day_detail_is_private_and_validates_the_date(client, db_session):
+    alice = _user(db_session, "Alice", "alice@example.test")
+    bob = _user(db_session, "Bob", "bob@example.test")
+    _msg(db_session, _chat(db_session, alice, "919000000001"), OUT, "sent", datetime(2026, 10, 9, 5, 0))
+    hdr = lambda u: {"Authorization": f"Bearer {create_access_token(u.id)}"}  # noqa: E731
+
+    assert client.get("/api/whatsapp/day?date=2026-10-09", headers=hdr(alice)).json()["chat_count"] == 1
+    assert client.get("/api/whatsapp/day?date=2026-10-09", headers=hdr(bob)).json()["chat_count"] == 0
+    assert client.get("/api/whatsapp/day?date=not-a-date", headers=hdr(alice)).status_code == 400
+    assert client.get("/api/whatsapp/day?date=2026-10-09").status_code in (401, 403)
