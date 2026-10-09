@@ -222,6 +222,29 @@ class MrLadWhatsAppClient:
         return None
 
     @classmethod
+    def add_note(cls, conv_id: str, content: str) -> bool:
+        """
+        Add an internal note to a Mr LAD conversation (best effort, never raises).
+        Used to leave a link to the picture that was just sent: Mr LAD's inbox cannot draw pictures sent through
+        its API because it does not record which picture it was.
+        """
+        try:
+            token, _ = cls.get_token()
+            if not token:
+                return False
+            api_base = settings.LAD_API_BASE_URL.rstrip("/")
+            res = requests.post(
+                f"{api_base}/api/conversations/{conv_id}/notes",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"content": content},
+                timeout=20,
+            )
+            return res.status_code == 200
+        except Exception as err:
+            logger.warning(f"[Mr LAD Note] could not add a note: {err}")
+            return False
+
+    @classmethod
     def send_image_message(cls, conv_id: str, img_path: str, caption: str = "") -> Tuple[bool, str, dict]:
         """
         Send a picture with a caption into a conversation as ONE WhatsApp message.
@@ -372,6 +395,7 @@ class MrLadWhatsAppClient:
         send_flyer: bool = True,
         sync_admin_copy: bool = True,
         image_path: Optional[str] = None,
+        image_url: Optional[str] = None,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         Sends an outbound WhatsApp message via Mr LAD API.
@@ -537,6 +561,8 @@ class MrLadWhatsAppClient:
                     )
                     if img_ok and not caption_fits:
                         _send_freetext(existing_conv_id, outbound_message)
+                    if img_ok and image_url:
+                        cls.add_note(existing_conv_id, f"Picture sent with this message: {image_url}")
                     if img_ok:
                         logger.info(f"[Mr LAD API] Successfully dispatched flyer image with description in 1 message to {recipient} ({img_id})")
                         if sync_admin_copy and not cls._is_admin_copy_number(recipient):

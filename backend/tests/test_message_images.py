@@ -193,3 +193,53 @@ def test_pictures_survive_a_database_reset(client, db_session, alice, bob, monke
     assert fake[cd.IMG_COLL].docs == {}
     cd._restored_image_users.clear()
     cd._email_cache.clear()
+
+
+# ─── links so the picture can be opened from the Mr LAD thread ───────────────
+def test_public_picture_links_open_without_login_but_cannot_be_guessed(client, alice):
+    made = _add(client, alice, label="Shared with the shop")
+    ok = client.get(f"/api/public/pictures/{made['uid']}")
+    assert ok.status_code == 200 and ok.headers["content-type"] == "image/jpeg" and ok.content == JPEG
+    assert client.get("/api/public/pictures/" + "0" * 32).status_code == 404            # right shape, no such picture
+    assert client.get("/api/public/pictures/1").status_code == 404                      # an id (not the secret uid) is no use
+    assert client.get("/api/public/pictures/../../etc/passwd").status_code == 404
+    flyer = client.get("/api/public/pictures/flyer")
+    assert flyer.status_code == 200 and flyer.headers["content-type"].startswith("image/")
+
+
+def test_the_sent_picture_link_reaches_the_gateway(client, alice, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "https://api.example.test")
+    seen = {}
+    from app.services.whatsapp_cloud_client import WhatsAppCloudClient
+    monkeypatch.setattr(WhatsAppCloudClient, "send_text", staticmethod(
+        lambda db, to_phone, text_body, **kw: (seen.update(kw) or (True, "wamid.T", {"mode": "simulator"}))))
+
+    mine = _add(client, alice)
+    client.post("/api/ai-whatsapp/broadcast-all", headers=_hdr(alice), json={
+        "shops": [{"name": "Chai Corner", "phone": "919876543210"}], "custom_message": "hi", "image_id": mine["id"]})
+    assert seen["image_url"] == f"https://api.example.test/api/public/pictures/{mine['uid']}"
+
+    seen.clear()
+    client.post("/api/ai-whatsapp/broadcast-all", headers=_hdr(alice), json={
+        "shops": [{"name": "Other Cafe", "phone": "919811122233"}], "custom_message": "hi", "include_flyer": True})
+    assert seen["image_url"] == "https://api.example.test/api/public/pictures/flyer"
+
+
+def test_a_note_with_the_picture_link_is_added_to_the_mr_lad_thread(monkeypatch):
+    from app.services.mr_lad_client import MrLadWhatsAppClient as C
+    calls = []
+
+    class Resp:
+        status_code = 200
+
+    monkeypatch.setattr(C, "get_token", classmethod(lambda cls: ("tok", None)))
+    import app.services.mr_lad_client as module
+    monkeypatch.setattr(module.requests, "post", lambda url, **kw: (calls.append((url, kw)) or Resp()))
+
+    assert C.add_note("conv-1", "Picture sent with this message: https://x/y") is True
+    url, kw = calls[0]
+    assert url.endswith("/api/conversations/conv-1/notes") and kw["json"] == {"content": "Picture sent with this message: https://x/y"}
+
+    monkeypatch.setattr(module.requests, "post", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
+    assert C.add_note("conv-1", "x") is False   # a failure never breaks sending
