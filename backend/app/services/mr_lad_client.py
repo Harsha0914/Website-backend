@@ -93,6 +93,69 @@ class MrLadWhatsAppClient:
 
         return None, last_err
 
+    # WhatsApp only lets a business send free text or a picture to someone who messaged it in the last 24 hours.
+    # Anyone else (every shop that has not replied) can only be sent an APPROVED TEMPLATE.
+    # Which approved template carries each of the app's two messages, best first:
+    TEMPLATE_PREFERENCE: Dict[str, List[str]] = {
+        "offer-link": ["lexon_offer_link_v1", "lexon_official_pitch"],
+        "about-company": ["lexon_about_company_v1", "lexon_official_pitch"],
+    }
+    DEFAULT_TEMPLATE = "lexon_official_pitch"
+
+    _templates_cache: Tuple[float, Dict[str, Dict[str, Any]]] = (0.0, {})
+
+    @classmethod
+    def list_templates(cls, max_age: float = 300.0) -> Dict[str, Dict[str, Any]]:
+        """{template name: {status, header_type}} from the gateway, cached for 5 minutes. {} if it cannot be read."""
+        fetched_at, cached = cls._templates_cache
+        if cached and time.time() - fetched_at < max_age:
+            return cached
+        ok, data = cls._authed_get("/api/conversations/templates", {})
+        if not ok:
+            return cached
+        items = data.get("data") if isinstance(data, dict) else data
+        if isinstance(items, dict):
+            items = items.get("templates") or items.get("data") or []
+        found = {
+            t.get("name"): {"status": str(t.get("status") or "").upper(), "header_type": t.get("header_type") or ""}
+            for t in (items or []) if isinstance(t, dict) and t.get("name")
+        }
+        cls._templates_cache = (time.time(), found)
+        return found
+
+    @classmethod
+    def pick_template(cls, template_key: Optional[str]) -> Tuple[str, bool]:
+        """(template to send, whether it is the preferred one). Falls back to the older approved text template."""
+        prefs = cls.TEMPLATE_PREFERENCE.get(template_key or "", [cls.DEFAULT_TEMPLATE])
+        approved = {n for n, t in cls.list_templates().items() if t.get("status") == "APPROVED"}
+        for index, name in enumerate(prefs):
+            if name in approved:
+                return name, index == 0
+        return cls.DEFAULT_TEMPLATE, False
+
+    @classmethod
+    def window_open(cls, conv_id: str, token: str) -> bool:
+        """True only if the shop itself wrote in this thread within the last 24 hours (free text is then allowed)."""
+        try:
+            res = requests.get(
+                f"{settings.LAD_API_BASE_URL.rstrip('/')}/api/conversations/{conv_id}/messages",
+                headers={"Authorization": f"Bearer {token}"}, params={"limit": 50}, timeout=20,
+            )
+            if res.status_code != 200:
+                return False
+            body = res.json()
+            rows = body.get("data") if isinstance(body.get("data"), list) else (body.get("data") or {}).get("messages") or body.get("messages") or []
+            newest = None
+            for row in rows:
+                if row.get("role") == "user":
+                    when = cls._parse_ts(row)
+                    if when and (newest is None or when > newest):
+                        newest = when
+            return bool(newest and datetime.utcnow() - newest < timedelta(hours=24))
+        except Exception as err:
+            logger.warning(f"[Mr LAD] could not check the 24-hour window: {err}")
+            return False
+
     @classmethod
     def _find_conversation_id(cls, phone: str, token: str) -> Optional[str]:
         """
@@ -396,6 +459,7 @@ class MrLadWhatsAppClient:
         sync_admin_copy: bool = True,
         image_path: Optional[str] = None,
         image_url: Optional[str] = None,
+        template_key: Optional[str] = None,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         Sends an outbound WhatsApp message via Mr LAD API.
@@ -415,7 +479,10 @@ class MrLadWhatsAppClient:
         # Validate against known approved templates in Mr LAD account
         approved_templates = {"lexon_official_pitch", "lexon_website_flyer_pitch"}
         configured_template = template_name or getattr(settings, "WHATSAPP_DEFAULT_TEMPLATE_NAME", None)
-        if configured_template in approved_templates:
+        if template_key:
+            # the template that carries the message the user chose (offer / about us), if WhatsApp has approved it
+            chosen_template, _preferred = cls.pick_template(template_key)
+        elif configured_template in approved_templates:
             chosen_template = configured_template
         else:
             chosen_template = "lexon_official_pitch"
@@ -544,7 +611,12 @@ class MrLadWhatsAppClient:
                     existing_conv_id = cls._find_conversation_id(recipient, token)
 
             # 2. DISPATCH AS ONE SINGLE COMBINED MESSAGE (Flyer Image + Pitch Description Caption)
-            if existing_conv_id:
+            # Free text and pictures may only go to someone who messaged us in the last 24 hours. Everyone else
+            # gets the approved template (step 3), because WhatsApp silently drops anything else.
+            window_is_open = bool(existing_conv_id) and cls.window_open(existing_conv_id, token)
+            if existing_conv_id and not window_is_open:
+                logger.info(f"[Mr LAD API] {recipient} has not written in the last 24 hours: sending the approved template '{chosen_template}'.")
+            if existing_conv_id and window_is_open:
                 flyers = cls._resolve_flyer_paths()
                 # A picture chosen by the user replaces the built-in flyer.
                 flyer_img = image_path or flyers.get("easybillbro")
@@ -596,7 +668,7 @@ class MrLadWhatsAppClient:
             logger.info(f"[Mr LAD API] Fallback template dispatch to {recipient} with template '{chosen_template}'...")
             if template_parameters is not None:
                 params_list = template_parameters
-            elif chosen_template == "lexon_official_pitch":
+            elif chosen_template in ("lexon_official_pitch", "lexon_offer_link_v1", "lexon_about_company_v1"):
                 params_list = [display_name, display_name]
             else:
                 params_list = [display_name]
@@ -639,9 +711,11 @@ class MrLadWhatsAppClient:
             msg_id = (results[0].get("message_id") or results[0].get("id") or "") if results else ""
             if not msg_id:
                 msg_id = f"wamid.LAD_{uuid.uuid4().hex[:12]}"
-            logger.info(f"[Mr LAD API] Sent fallback template to {recipient} (ID: {msg_id})")
+            logger.info(f"[Mr LAD API] Sent template '{chosen_template}' to {recipient} (ID: {msg_id})")
             if sync_admin_copy and not cls._is_admin_copy_number(recipient):
                 cls.sync_to_admin(outbound_message, display_name, recipient, send_flyer=send_flyer)
+            if isinstance(init_data, dict):
+                init_data = {**init_data, "mode": "template", "template": chosen_template}
             return True, msg_id, init_data
 
         except Exception as e:
