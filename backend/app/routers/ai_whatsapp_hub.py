@@ -68,6 +68,7 @@ class BulkWhatsAppBroadcastSchema(BaseModel):
     operator_name: Optional[str] = "Lexon IT AI Specialist"
     include_flyer: Optional[bool] = True
     image_id: Optional[int] = None   # a picture from the signed-in account's own library
+    template_key: Optional[str] = None  # 'offer-link' | 'about-company': which message the user chose
 
 class MessageSendSchema(BaseModel):
     message_text: str
@@ -594,6 +595,30 @@ def _public_picture_url(request, name: str) -> str:
     return f"{base}/api/public/pictures/{name}" if base else ""
 
 
+@router.get("/send-mode")
+def send_mode(
+    phone: str = Query(..., description="The shop's phone number"),
+    template_key: Optional[str] = Query(None),
+    current_user=Depends(get_current_user),
+):
+    """
+    How a message to this number will really be sent. WhatsApp allows free text and pictures only to someone who
+    wrote in the last 24 hours; everyone else can only be sent an approved template.
+    """
+    from app.services.mr_lad_client import MrLadWhatsAppClient as Lad
+
+    if settings.WHATSAPP_IS_TEST_MODE or not (settings.LAD_API_TOKEN or settings.LAD_AUTH_PASSWORD):
+        return {"mode": "free", "template": None, "template_ready": True, "note": "test mode"}
+    template, ready = Lad.pick_template(template_key)
+    try:
+        token, _ = Lad.get_token()
+        conv_id = Lad._find_conversation_id(Lad._clean_phone(phone), token) if token else None
+        open_window = bool(conv_id and token and Lad.window_open(conv_id, token))
+    except Exception:
+        open_window = False
+    return {"mode": "free" if open_window else "template", "template": template, "template_ready": ready}
+
+
 # ─── 12. Bulk AI WhatsApp Broadcast to Multiple Shops ────────────────────────
 @router.post("/broadcast-all")
 def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Session = Depends(get_db), current_user=Depends(get_current_user), request: Request = None):
@@ -730,6 +755,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                     send_flyer=should_send_flyer,
                     image_path=image_path,
                     image_url=image_url or (_public_picture_url(request, "flyer") if should_send_flyer else None),
+                    template_key=payload.template_key,
                 )
             except Exception as w_err:
                 whatsapp_sent, w_res = False, str(w_err)
@@ -742,6 +768,9 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                 msg_body_record = f"[Attached: EasyBillBro Restaurant Billing & POS Flyer]\n\n{personalized_msg}"
             else:
                 msg_body_record = personalized_msg
+            sent_as = w_raw.get("template") if isinstance(w_raw, dict) and w_raw.get("mode") == "template" else None
+            if sent_as:  # the shop had not written in the last 24 hours: only an approved template could be sent
+                msg_body_record = f"[Sent as the approved WhatsApp template: {sent_as}]\n\n{personalized_msg}"
             outbound_msg = WhatsAppMessage(
                 conversation_id=conv.id,
                 direction=WhatsAppDirection.OUTBOUND,
@@ -781,6 +810,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                 "error": None if status != "failed" else str(w_res or "Failed to deliver WhatsApp message"),
                 "message_id": outbound_msg.id,
                 "auto_ai_enabled": conv.auto_ai_enabled,
+                "sent_as_template": sent_as,
             })
         except Exception as err:
             db.rollback()
