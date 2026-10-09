@@ -123,7 +123,7 @@ def test_a_chosen_picture_is_sent_instead_of_the_flyer_and_only_if_it_is_yours(c
 
     # the conversation records which picture went with the message
     from app.models.whatsapp import WhatsAppMessage
-    assert any("[Attached picture: Latte art]" in m.message_body for m in db_session.query(WhatsAppMessage).all())
+    assert any(f"[Attached picture #{mine['id']}: Latte art]" in m.message_body for m in db_session.query(WhatsAppMessage).all())
 
     # someone else's picture cannot be used
     sent.clear()

@@ -727,7 +727,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
             status = delivery_status(whatsapp_sent, w_raw)
 
             if image_path:
-                msg_body_record = f"[Attached picture: {image_label}]\n\n{personalized_msg}"
+                msg_body_record = f"[Attached picture #{payload.image_id}: {image_label}]\n\n{personalized_msg}"
             elif should_send_flyer:
                 msg_body_record = f"[Attached: EasyBillBro Restaurant Billing & POS Flyer]\n\n{personalized_msg}"
             else:
