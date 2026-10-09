@@ -378,6 +378,7 @@ class MrLadWhatsAppClient:
         template_parameters: Optional[List[str]] = None,
         send_flyer: bool = True,
         sync_admin_copy: bool = True,
+        image_path: Optional[str] = None,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         Sends an outbound WhatsApp message via Mr LAD API.
@@ -528,15 +529,21 @@ class MrLadWhatsAppClient:
             # 2. DISPATCH AS ONE SINGLE COMBINED MESSAGE (Flyer Image + Pitch Description Caption)
             if existing_conv_id:
                 flyers = cls._resolve_flyer_paths()
-                flyer_img = flyers.get("easybillbro")
+                # A picture chosen by the user replaces the built-in flyer.
+                flyer_img = image_path or flyers.get("easybillbro")
+                with_image = bool(image_path) or send_flyer
 
-                if send_flyer and flyer_img:
+                if with_image and flyer_img:
                     logger.info(f"[Mr LAD API] Dispatching single combined message (image + description) to {recipient} ({existing_conv_id})...")
+                    # WhatsApp allows at most 1024 characters in a picture's caption; longer text follows as its own message.
+                    caption_fits = len(outbound_message) <= 1024
                     img_ok, img_id, img_data = cls.send_image_message(
                         conv_id=existing_conv_id,
                         img_path=flyer_img,
-                        caption=outbound_message
+                        caption=outbound_message if caption_fits else ""
                     )
+                    if img_ok and not caption_fits:
+                        _send_freetext(existing_conv_id, outbound_message)
                     if img_ok:
                         logger.info(f"[Mr LAD API] Successfully dispatched flyer image with description in 1 message to {recipient} ({img_id})")
                         if sync_admin_copy and not cls._is_admin_copy_number(recipient):

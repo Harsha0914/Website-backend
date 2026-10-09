@@ -23,6 +23,7 @@ from app.routers import (
     admin,
     whatsapp,
     ai_whatsapp_hub,
+    message_images,
 )
 
 # Initialize database tables on startup
@@ -145,6 +146,7 @@ app.include_router(admin.router)
 app.include_router(whatsapp.router)
 app.include_router(whatsapp.webhook_router)
 app.include_router(ai_whatsapp_hub.router)
+app.include_router(message_images.router)
 
 # Serve flyer image directly
 from fastapi.responses import FileResponse

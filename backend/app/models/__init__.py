@@ -11,6 +11,7 @@ from app.models.whatsapp import (
     WhatsAppSenderType,
     LeadStatus,
 )
+from app.models.message_image import MessageImage
 from app.models.ai_conversation import (
     AIKnowledgeBase,
     AISettings,

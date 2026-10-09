@@ -67,6 +67,7 @@ class BulkWhatsAppBroadcastSchema(BaseModel):
     auto_ai_enabled: Optional[bool] = True
     operator_name: Optional[str] = "Lexon IT AI Specialist"
     include_flyer: Optional[bool] = True
+    image_id: Optional[int] = None   # a picture from the signed-in account's own library
 
 class MessageSendSchema(BaseModel):
     message_text: str
@@ -609,6 +610,18 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
             detail=f"Too many recipients ({len(payload.shops)}). Maximum per broadcast is {max_batch}.",
         )
 
+    # The picture to attach (the account's own, never anyone else's).
+    image_path = None
+    image_label = None
+    if payload.image_id:
+        from app.models.message_image import MessageImage
+        from app.services.message_images import file_for_sending
+        chosen = db.query(MessageImage).filter(MessageImage.id == payload.image_id, MessageImage.owner_id == current_user.id).first()
+        if not chosen:
+            raise HTTPException(status_code=404, detail="Picture not found")
+        image_path = file_for_sending(chosen)
+        image_label = chosen.label
+
     default_template = (
         "Hello {shop_name},\n\n"
         "This is Lexon IT. We help businesses grow online by building professional websites, web applications, and mobile apps tailored to their needs.\n\n"
@@ -696,7 +709,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                 time.sleep(float(settings.WHATSAPP_BROADCAST_DELAY_SECONDS or 0))
             attempted_send = True
 
-            should_send_flyer = bool(getattr(payload, "include_flyer", True))
+            should_send_flyer = bool(getattr(payload, "include_flyer", True)) and not image_path
             whatsapp_sent, w_res, w_raw = False, None, None
             try:
                 whatsapp_sent, w_res, w_raw = WhatsAppCloudClient.send_text(
@@ -706,17 +719,19 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                     preview_url=True,
                     recipient_name=s_name,
                     send_flyer=should_send_flyer,
+                    image_path=image_path,
                 )
             except Exception as w_err:
                 whatsapp_sent, w_res = False, str(w_err)
 
             status = delivery_status(whatsapp_sent, w_raw)
 
-            msg_body_record = (
-                f"[Attached: EasyBillBro Restaurant Billing & POS Flyer]\n\n{personalized_msg}"
-                if should_send_flyer
-                else personalized_msg
-            )
+            if image_path:
+                msg_body_record = f"[Attached picture: {image_label}]\n\n{personalized_msg}"
+            elif should_send_flyer:
+                msg_body_record = f"[Attached: EasyBillBro Restaurant Billing & POS Flyer]\n\n{personalized_msg}"
+            else:
+                msg_body_record = personalized_msg
             outbound_msg = WhatsAppMessage(
                 conversation_id=conv.id,
                 direction=WhatsAppDirection.OUTBOUND,
