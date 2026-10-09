@@ -935,6 +935,20 @@ def update_requirements(
 # 13. WHATSAPP ANALYTICS
 # =============================================================================
 
+@router.get("/summary")
+def get_whatsapp_summary(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Today / yesterday / last 7 days / last 30 days for the signed-in account only
+    (messages sent, shops contacted, replies, failures) plus a 7-day chart. Days are Indian days.
+    """
+    from app.services.whatsapp_summary import build_summary
+
+    return build_summary(db, current_user.id)
+
+
 @router.get("/stats")
 def get_whatsapp_stats(
     period: str = Query(
