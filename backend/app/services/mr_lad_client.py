@@ -97,8 +97,8 @@ class MrLadWhatsAppClient:
     # Anyone else (every shop that has not replied) can only be sent an APPROVED TEMPLATE.
     # Which approved template carries each of the app's two messages, best first:
     TEMPLATE_PREFERENCE: Dict[str, List[str]] = {
-        "offer-link": ["lexon_offer_link_v1", "lexon_official_pitch"],
-        "about-company": ["lexon_about_company_v1", "lexon_official_pitch"],
+        "offer-link": ["lexon_offer_link_v2", "lexon_official_pitch"],
+        "about-company": ["lexon_about_company_v2", "lexon_official_pitch"],
     }
     DEFAULT_TEMPLATE = "lexon_official_pitch"
 
@@ -117,7 +117,7 @@ class MrLadWhatsAppClient:
         if isinstance(items, dict):
             items = items.get("templates") or items.get("data") or []
         found = {
-            t.get("name"): {"status": str(t.get("status") or "").upper(), "header_type": t.get("header_type") or ""}
+            t.get("name"): {"status": str(t.get("status") or "").upper(), "header_type": t.get("header_type") or "", "body": t.get("body") or ""}
             for t in (items or []) if isinstance(t, dict) and t.get("name")
         }
         cls._templates_cache = (time.time(), found)
@@ -127,11 +127,24 @@ class MrLadWhatsAppClient:
     def pick_template(cls, template_key: Optional[str]) -> Tuple[str, bool]:
         """(template to send, whether it is the preferred one). Falls back to the older approved text template."""
         prefs = cls.TEMPLATE_PREFERENCE.get(template_key or "", [cls.DEFAULT_TEMPLATE])
-        approved = {n for n, t in cls.list_templates().items() if t.get("status") == "APPROVED"}
+        # Mr LAD's send interface cannot attach a header picture, so a template with a picture/video/document header
+        # always fails there (WhatsApp error 132012). Only header-less templates are usable.
+        approved = {
+            n for n, t in cls.list_templates().items()
+            if t.get("status") == "APPROVED" and not (t.get("header_type") or "").strip()
+        }
         for index, name in enumerate(prefs):
             if name in approved:
                 return name, index == 0
         return cls.DEFAULT_TEMPLATE, False
+
+    @classmethod
+    def render_template(cls, name: str, params: List[str]) -> str:
+        """The wording a template message really carries, with its {{1}}, {{2}} filled in ('' if unknown)."""
+        body = (cls.list_templates().get(name) or {}).get("body") or ""
+        for index, value in enumerate(params or [], start=1):
+            body = body.replace("{{" + str(index) + "}}", str(value))
+        return body
 
     @classmethod
     def window_open(cls, conv_id: str, token: str) -> bool:
@@ -668,7 +681,7 @@ class MrLadWhatsAppClient:
             logger.info(f"[Mr LAD API] Fallback template dispatch to {recipient} with template '{chosen_template}'...")
             if template_parameters is not None:
                 params_list = template_parameters
-            elif chosen_template in ("lexon_official_pitch", "lexon_offer_link_v1", "lexon_about_company_v1"):
+            elif chosen_template in ("lexon_official_pitch", "lexon_offer_link_v2", "lexon_about_company_v2"):
                 params_list = [display_name, display_name]
             else:
                 params_list = [display_name]
@@ -714,6 +727,13 @@ class MrLadWhatsAppClient:
             logger.info(f"[Mr LAD API] Sent template '{chosen_template}' to {recipient} (ID: {msg_id})")
             if sync_admin_copy and not cls._is_admin_copy_number(recipient):
                 cls.sync_to_admin(outbound_message, display_name, recipient, send_flyer=send_flyer)
+            try:
+                wording = cls.render_template(chosen_template, params_list)
+                note_conv = existing_conv_id or (results[0].get("conversation_id") if results else None) or cls._find_conversation_id(recipient, token)
+                if wording and note_conv:
+                    cls.add_note(note_conv, f"WhatsApp message sent as template \u201c{chosen_template}\u201d:\n\n{wording}")
+            except Exception as note_err:
+                logger.warning(f"[Mr LAD] could not add the wording note: {note_err}")
             if isinstance(init_data, dict):
                 init_data = {**init_data, "mode": "template", "template": chosen_template}
             return True, msg_id, init_data
