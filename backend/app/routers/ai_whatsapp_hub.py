@@ -587,9 +587,16 @@ def test_flyer_send(to_phone: str = Query(..., description="Phone number to test
     return result
 
 
+def _public_picture_url(request, name: str) -> str:
+    """Public link to a picture (the built-in flyer is called 'flyer'); used for the note added in Mr LAD."""
+    import os
+    base = (settings.PUBLIC_BASE_URL or os.environ.get("RENDER_EXTERNAL_URL") or (str(request.base_url) if request is not None else "")).rstrip("/")
+    return f"{base}/api/public/pictures/{name}" if base else ""
+
+
 # ─── 12. Bulk AI WhatsApp Broadcast to Multiple Shops ────────────────────────
 @router.post("/broadcast-all")
-def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Session = Depends(get_db), current_user=Depends(get_current_user), request: Request = None):
     """
     Sends a personalised website pitch to multiple shops.
 
@@ -613,6 +620,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
     # The picture to attach (the account's own, never anyone else's).
     image_path = None
     image_label = None
+    image_url = None
     if payload.image_id:
         from app.models.message_image import MessageImage
         from app.services.message_images import file_for_sending
@@ -621,6 +629,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
             raise HTTPException(status_code=404, detail="Picture not found")
         image_path = file_for_sending(chosen)
         image_label = chosen.label
+        image_url = _public_picture_url(request, chosen.uid)
 
     default_template = (
         "Hello {shop_name},\n\n"
@@ -720,6 +729,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                     recipient_name=s_name,
                     send_flyer=should_send_flyer,
                     image_path=image_path,
+                    image_url=image_url or (_public_picture_url(request, "flyer") if should_send_flyer else None),
                 )
             except Exception as w_err:
                 whatsapp_sent, w_res = False, str(w_err)
