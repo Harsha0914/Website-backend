@@ -3,7 +3,7 @@ A simple picture of one account's WhatsApp activity: today, yesterday, the last 
 day-by-day chart. Days are Indian days (midnight to midnight IST), and only the account's own chats count.
 """
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date as date_type, datetime, timedelta
 from typing import Dict, List, Optional
 
 # pyrefly: ignore [missing-import]
@@ -102,4 +102,54 @@ def build_summary(db: Session, owner_id: int, now_utc: Optional[datetime] = None
         "chats": len(conv_ids),
         "periods": periods,
         "daily": daily,
+    }
+
+
+def day_detail(db: Session, owner_id: int, day: date_type) -> dict:
+    """
+    Everything that happened on one Indian calendar day in this account's chats: totals and the list of
+    chats that had a message that day (newest activity first).
+    """
+    start = datetime(day.year, day.month, day.day) - IST_OFFSET
+    end = start + timedelta(days=1)
+
+    conv_ids = [r[0] for r in db.query(WhatsAppConversation.id).filter(WhatsAppConversation.owner_id == owner_id).all()]
+    chats: Dict[int, dict] = {}
+    if conv_ids:
+        rows = (
+            db.query(WhatsAppMessage.conversation_id, WhatsAppMessage.direction, WhatsAppMessage.status, WhatsAppMessage.created_at)
+            .filter(
+                WhatsAppMessage.conversation_id.in_(conv_ids),
+                WhatsAppMessage.created_at >= start,
+                WhatsAppMessage.created_at < end,
+            )
+            .all()
+        )
+        for conv_id, direction, status, created_at in rows:
+            entry = chats.setdefault(conv_id, {"conversation_id": conv_id, "sent": 0, "received": 0, "failed": 0, "last_at": created_at})
+            if direction == WhatsAppDirection.INBOUND:
+                entry["received"] += 1
+            elif status in SENT_STATUSES:
+                entry["sent"] += 1
+            elif status == "failed":
+                entry["failed"] += 1
+            if created_at and (entry["last_at"] is None or created_at > entry["last_at"]):
+                entry["last_at"] = created_at
+
+        names = {
+            c.id: (c.shop_name, c.phone_number)
+            for c in db.query(WhatsAppConversation).filter(WhatsAppConversation.id.in_(list(chats))).all()
+        } if chats else {}
+        for conv_id, entry in chats.items():
+            entry["shop_name"], entry["phone_number"] = names.get(conv_id, ("", ""))
+            entry["last_at"] = entry["last_at"].isoformat() if entry["last_at"] else None
+
+    ordered = sorted(chats.values(), key=lambda c: c["last_at"] or "", reverse=True)
+    return {
+        "date": day.isoformat(),
+        "sent": sum(c["sent"] for c in ordered),
+        "received": sum(c["received"] for c in ordered),
+        "failed": sum(c["failed"] for c in ordered),
+        "chat_count": len(ordered),
+        "chats": ordered,
     }
