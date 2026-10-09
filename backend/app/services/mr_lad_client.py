@@ -97,10 +97,10 @@ class MrLadWhatsAppClient:
     # Anyone else (every shop that has not replied) can only be sent an APPROVED TEMPLATE.
     # Which approved template carries each of the app's two messages, best first:
     TEMPLATE_PREFERENCE: Dict[str, List[str]] = {
-        "offer-link": ["lexon_offer_link_v2", "lexon_official_pitch"],
-        "about-company": ["lexon_about_company_v2", "lexon_official_pitch"],
+        "offer-link": ["lexon_offer_link_v2"],
+        "about-company": ["lexon_about_company_v2"],
     }
-    DEFAULT_TEMPLATE = "lexon_official_pitch"
+    DEFAULT_TEMPLATE = "lexon_offer_link_v2"   # for sends that do not name a message (never the old pitch template)
 
     _templates_cache: Tuple[float, Dict[str, Dict[str, Any]]] = (0.0, {})
 
@@ -124,8 +124,11 @@ class MrLadWhatsAppClient:
         return found
 
     @classmethod
-    def pick_template(cls, template_key: Optional[str]) -> Tuple[str, bool]:
-        """(template to send, whether it is the preferred one). Falls back to the older approved text template."""
+    def pick_template(cls, template_key: Optional[str]) -> Tuple[Optional[str], bool]:
+        """
+        (the template for this message, ready). Each message has its own template and nothing else is ever substituted:
+        if it is not approved (or cannot be sent) the answer is (None, False) and the send is refused with a clear reason.
+        """
         prefs = cls.TEMPLATE_PREFERENCE.get(template_key or "", [cls.DEFAULT_TEMPLATE])
         # Mr LAD's send interface cannot attach a header picture, so a template with a picture/video/document header
         # always fails there (WhatsApp error 132012). Only header-less templates are usable.
@@ -133,10 +136,13 @@ class MrLadWhatsAppClient:
             n for n, t in cls.list_templates().items()
             if t.get("status") == "APPROVED" and not (t.get("header_type") or "").strip()
         }
-        for index, name in enumerate(prefs):
+        known = cls.list_templates()
+        if not known:  # the template list could not be read: trust the configured name and let the gateway decide
+            return prefs[0], True
+        for name in prefs:
             if name in approved:
-                return name, index == 0
-        return cls.DEFAULT_TEMPLATE, False
+                return name, True
+        return None, False
 
     @classmethod
     def render_template(cls, name: str, params: List[str]) -> str:
@@ -490,15 +496,8 @@ class MrLadWhatsAppClient:
         recipient = cls._clean_phone(to_phone)
         display_name = recipient_name or "Shop Owner"
         # Validate against known approved templates in Mr LAD account
-        approved_templates = {"lexon_official_pitch", "lexon_website_flyer_pitch"}
-        configured_template = template_name or getattr(settings, "WHATSAPP_DEFAULT_TEMPLATE_NAME", None)
-        if template_key:
-            # the template that carries the message the user chose (offer / about us), if WhatsApp has approved it
-            chosen_template, _preferred = cls.pick_template(template_key)
-        elif configured_template in approved_templates:
-            chosen_template = configured_template
-        else:
-            chosen_template = "lexon_official_pitch"
+        # The template that carries the message the user chose (offer / about us). Nothing else is substituted.
+        chosen_template, _ready = cls.pick_template(template_key or "offer-link")
 
         # Check for test mode or missing credentials
         has_creds = bool(settings.LAD_API_TOKEN or settings.LAD_AUTH_PASSWORD)
@@ -678,10 +677,12 @@ class MrLadWhatsAppClient:
             if not language_code or language_code == "en":
                 language_code = "en_US"
 
-            logger.info(f"[Mr LAD API] Fallback template dispatch to {recipient} with template '{chosen_template}'...")
+            if not chosen_template:
+                return False, "The WhatsApp template for this message is not approved yet, so it cannot be sent to a shop that has not written to you.", {"mode": "template", "template": None}
+            logger.info(f"[Mr LAD API] Template dispatch to {recipient} with template '{chosen_template}'...")
             if template_parameters is not None:
                 params_list = template_parameters
-            elif chosen_template in ("lexon_official_pitch", "lexon_offer_link_v2", "lexon_about_company_v2"):
+            elif chosen_template in ("lexon_offer_link_v2", "lexon_about_company_v2"):
                 params_list = [display_name, display_name]
             else:
                 params_list = [display_name]
@@ -704,18 +705,6 @@ class MrLadWhatsAppClient:
             first_status = results[0].get("status") if results else ""
             if res.status_code != 200 or first_status == "failed":
                 err_text = (results[0].get("error") if results else None) or init_data.get("error") or init_data.get("message") or res.text
-                if chosen_template != "lexon_official_pitch" or language_code != "en_US":
-                    logger.info(f"[Mr LAD API] Template '{chosen_template}' failed ({err_text}). Retrying with 'lexon_official_pitch' (en_US)...")
-                    chosen_template = "lexon_official_pitch"
-                    language_code = "en_US"
-                    init_payload["template_name"] = "lexon_official_pitch"
-                    init_payload["language_code"] = "en_US"
-                    init_payload["members"][0]["params"] = [display_name, display_name]
-                    res = _post(f"{api_base}/api/conversations/send-template-to-members", init_payload)
-                    init_data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
-                    results = init_data.get("results", [])
-                    first_status = results[0].get("status") if results else ""
-
             if res.status_code != 200 or first_status == "failed":
                 err_text = (results[0].get("error") if results else None) or init_data.get("error") or init_data.get("message") or res.text
                 logger.error(f"[Mr LAD API Send Error {res.status_code}] {err_text}")

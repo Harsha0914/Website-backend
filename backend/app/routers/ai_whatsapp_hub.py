@@ -616,7 +616,7 @@ def send_mode(
         open_window = bool(conv_id and token and Lad.window_open(conv_id, token))
     except Exception:
         open_window = False
-    return {"mode": "free" if open_window else "template", "template": template, "template_ready": ready}
+    return {"mode": "free" if open_window else "template", "template": template, "template_ready": bool(template and ready)}
 
 
 # ─── 12. Bulk AI WhatsApp Broadcast to Multiple Shops ────────────────────────

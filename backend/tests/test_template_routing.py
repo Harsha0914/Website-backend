@@ -15,24 +15,29 @@ def _templates(**statuses):
     return {name: {"status": status, "header_type": "", "body": ""} for name, status in statuses.items()}
 
 
-def test_the_new_template_is_used_once_approved_and_the_older_one_until_then(monkeypatch):
+def test_each_message_uses_only_its_own_template_and_never_a_stand_in(monkeypatch):
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: _templates(
-        lexon_official_pitch="APPROVED", lexon_offer_link_v2="PENDING", lexon_about_company_v2="PENDING")))
-    assert Lad.pick_template("offer-link") == ("lexon_official_pitch", False)       # still waiting for WhatsApp
-    assert Lad.pick_template("about-company") == ("lexon_official_pitch", False)
+        lexon_official_pitch="APPROVED", lexon_offer_link_v2="APPROVED", lexon_about_company_v2="APPROVED")))
+    assert Lad.pick_template("offer-link") == ("lexon_offer_link_v2", True)
+    assert Lad.pick_template("about-company") == ("lexon_about_company_v2", True)      # not the same template for both
+    assert Lad.pick_template(None) == ("lexon_offer_link_v2", True)
 
+    # waiting for WhatsApp / refused: no template at all (the old official pitch is NEVER used instead)
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: _templates(
-        lexon_official_pitch="APPROVED", lexon_offer_link_v2="APPROVED", lexon_about_company_v2="REJECTED")))
-    assert Lad.pick_template("offer-link") == ("lexon_offer_link_v2", True)         # approved: used
-    assert Lad.pick_template("about-company") == ("lexon_official_pitch", False)    # rejected: never used
-    assert Lad.pick_template(None) == ("lexon_official_pitch", True)                 # no message chosen: the default itself
+        lexon_official_pitch="APPROVED", lexon_offer_link_v2="PENDING", lexon_about_company_v2="REJECTED")))
+    assert Lad.pick_template("offer-link") == (None, False)
+    assert Lad.pick_template("about-company") == (None, False)
+
+    # the list cannot be read at all: trust the configured template and let the gateway decide
+    monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: {}))
+    assert Lad.pick_template("about-company") == ("lexon_about_company_v2", True)
 
 
 def test_templates_with_a_picture_header_are_never_chosen_because_the_gateway_cannot_send_them(monkeypatch):
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: {
         "lexon_offer_link_v2": {"status": "APPROVED", "header_type": "image", "body": ""},
         "lexon_official_pitch": {"status": "APPROVED", "header_type": "", "body": ""}}))
-    assert Lad.pick_template("offer-link") == ("lexon_official_pitch", False)      # the picture one would fail (#132012)
+    assert Lad.pick_template("offer-link") == (None, False)                          # the picture one would fail (#132012)
 
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: {
         "lexon_offer_link_v2": {"status": "APPROVED", "header_type": "", "body": ""},
