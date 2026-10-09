@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     LAD_AUTH_EMAIL: str = "api@lexonit.com"
     LAD_AUTH_PASSWORD: str = ""
     LAD_API_TOKEN: str = ""
-    WHATSAPP_DEFAULT_TEMPLATE_NAME: str = "lexon_offer_link_v2"
+    WHATSAPP_DEFAULT_TEMPLATE_NAME: str = "lexon_offer_link_v3"
 
     # Meta WhatsApp Cloud API (direct fallback)
     WHATSAPP_ACCESS_TOKEN: str = ""

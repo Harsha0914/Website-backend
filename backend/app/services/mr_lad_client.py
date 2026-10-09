@@ -97,10 +97,11 @@ class MrLadWhatsAppClient:
     # Anyone else (every shop that has not replied) can only be sent an APPROVED TEMPLATE.
     # Which approved template carries each of the app's two messages, best first:
     TEMPLATE_PREFERENCE: Dict[str, List[str]] = {
-        "offer-link": ["lexon_offer_link_v2"],
-        "about-company": ["lexon_about_company_v2"],
+        # newest first: v3 are plain messages (no buttons); v2 (same wording, with buttons) is used only until v3 is approved
+        "offer-link": ["lexon_offer_link_v3", "lexon_offer_link_v2"],
+        "about-company": ["lexon_about_company_v3", "lexon_about_company_v2"],
     }
-    DEFAULT_TEMPLATE = "lexon_offer_link_v2"   # for sends that do not name a message (never the old pitch template)
+    DEFAULT_TEMPLATE = "lexon_offer_link_v3"   # for sends that do not name a message (never the old pitch template)
 
     _templates_cache: Tuple[float, Dict[str, Dict[str, Any]]] = (0.0, {})
 
@@ -682,7 +683,7 @@ class MrLadWhatsAppClient:
             logger.info(f"[Mr LAD API] Template dispatch to {recipient} with template '{chosen_template}'...")
             if template_parameters is not None:
                 params_list = template_parameters
-            elif chosen_template in ("lexon_offer_link_v2", "lexon_about_company_v2"):
+            elif chosen_template in ("lexon_offer_link_v2", "lexon_about_company_v2", "lexon_offer_link_v3", "lexon_about_company_v3"):
                 params_list = [display_name, display_name]
             else:
                 params_list = [display_name]

@@ -17,32 +17,43 @@ def _templates(**statuses):
 
 def test_each_message_uses_only_its_own_template_and_never_a_stand_in(monkeypatch):
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: _templates(
-        lexon_official_pitch="APPROVED", lexon_offer_link_v2="APPROVED", lexon_about_company_v2="APPROVED")))
-    assert Lad.pick_template("offer-link") == ("lexon_offer_link_v2", True)
-    assert Lad.pick_template("about-company") == ("lexon_about_company_v2", True)      # not the same template for both
-    assert Lad.pick_template(None) == ("lexon_offer_link_v2", True)
+        lexon_official_pitch="APPROVED", lexon_offer_link_v3="APPROVED", lexon_about_company_v3="APPROVED")))
+    assert Lad.pick_template("offer-link") == ("lexon_offer_link_v3", True)
+    assert Lad.pick_template("about-company") == ("lexon_about_company_v3", True)      # not the same template for both
+    assert Lad.pick_template(None) == ("lexon_offer_link_v3", True)
 
     # waiting for WhatsApp / refused: no template at all (the old official pitch is NEVER used instead)
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: _templates(
-        lexon_official_pitch="APPROVED", lexon_offer_link_v2="PENDING", lexon_about_company_v2="REJECTED")))
+        lexon_official_pitch="APPROVED", lexon_offer_link_v3="PENDING", lexon_about_company_v3="REJECTED")))
     assert Lad.pick_template("offer-link") == (None, False)
     assert Lad.pick_template("about-company") == (None, False)
 
     # the list cannot be read at all: trust the configured template and let the gateway decide
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: {}))
+    assert Lad.pick_template("about-company") == ("lexon_about_company_v3", True)
+
+
+def test_plain_v3_is_preferred_and_the_button_version_is_used_only_until_it_is_approved(monkeypatch):
+    monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: _templates(
+        lexon_offer_link_v3="PENDING", lexon_offer_link_v2="APPROVED", lexon_about_company_v3="PENDING", lexon_about_company_v2="APPROVED")))
+    assert Lad.pick_template("offer-link") == ("lexon_offer_link_v2", True)
     assert Lad.pick_template("about-company") == ("lexon_about_company_v2", True)
+    monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: _templates(
+        lexon_offer_link_v3="APPROVED", lexon_offer_link_v2="APPROVED", lexon_about_company_v3="APPROVED", lexon_about_company_v2="APPROVED")))
+    assert Lad.pick_template("offer-link") == ("lexon_offer_link_v3", True)
+    assert Lad.pick_template("about-company") == ("lexon_about_company_v3", True)
 
 
 def test_templates_with_a_picture_header_are_never_chosen_because_the_gateway_cannot_send_them(monkeypatch):
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: {
-        "lexon_offer_link_v2": {"status": "APPROVED", "header_type": "image", "body": ""},
+        "lexon_offer_link_v3": {"status": "APPROVED", "header_type": "image", "body": ""},
         "lexon_official_pitch": {"status": "APPROVED", "header_type": "", "body": ""}}))
     assert Lad.pick_template("offer-link") == (None, False)                          # the picture one would fail (#132012)
 
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: {
-        "lexon_offer_link_v2": {"status": "APPROVED", "header_type": "", "body": ""},
+        "lexon_offer_link_v3": {"status": "APPROVED", "header_type": "", "body": ""},
         "lexon_official_pitch": {"status": "APPROVED", "header_type": "", "body": ""}}))
-    assert Lad.pick_template("offer-link") == ("lexon_offer_link_v2", True)
+    assert Lad.pick_template("offer-link") == ("lexon_offer_link_v3", True)
 
 
 def test_the_real_wording_of_a_template_is_rendered_for_the_mr_lad_note(monkeypatch):
@@ -89,11 +100,11 @@ def test_send_mode_tells_the_dialog_how_the_message_will_really_go(client, db_se
     monkeypatch.setattr(settings, "LAD_API_TOKEN", "x")
     monkeypatch.setattr(Lad, "get_token", classmethod(lambda cls, force_refresh=False: ("tok", None)))
     monkeypatch.setattr(Lad, "_find_conversation_id", classmethod(lambda cls, phone, token: "conv-1"))
-    monkeypatch.setattr(Lad, "pick_template", classmethod(lambda cls, key: ("lexon_offer_link_v2", True)))
+    monkeypatch.setattr(Lad, "pick_template", classmethod(lambda cls, key: ("lexon_offer_link_v3", True)))
 
     monkeypatch.setattr(Lad, "window_open", classmethod(lambda cls, conv, token: False))
     cold = client.get("/api/ai-whatsapp/send-mode?phone=919876543210&template_key=offer-link", headers=headers).json()
-    assert cold == {"mode": "template", "template": "lexon_offer_link_v2", "template_ready": True}
+    assert cold == {"mode": "template", "template": "lexon_offer_link_v3", "template_ready": True}
 
     monkeypatch.setattr(Lad, "window_open", classmethod(lambda cls, conv, token: True))
     warm = client.get("/api/ai-whatsapp/send-mode?phone=919876543210&template_key=offer-link", headers=headers).json()
