@@ -26,6 +26,7 @@ from sqlalchemy import event
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 
+from app.models.message_image import MessageImage
 from app.models.user import User
 from app.models.whatsapp import (
     WhatsAppConversation,
@@ -38,6 +39,7 @@ logger = logging.getLogger("chat_durability")
 
 CONV_COLL = "whatsapp_chat_conversations"
 MSG_COLL = "whatsapp_chat_messages"
+IMG_COLL = "whatsapp_message_images"
 
 CONV_FIELDS = [
     "phone_number", "shop_name", "owner_name", "auto_ai_enabled", "lead_status", "lead_score",
@@ -60,6 +62,7 @@ _worker_started = False
 _worker_lock = threading.Lock()
 _email_cache: Dict[int, str] = {}
 _restored_users: set = set()
+_restored_image_users: set = set()
 _last_warning = 0.0
 
 
@@ -130,6 +133,14 @@ def _conv_doc(conv: WhatsAppConversation, email: str) -> Tuple[str, dict]:
     doc["_id"] = key
     doc["owner_email"] = email
     return key, doc
+
+
+def _image_doc(img: MessageImage, email: str) -> dict:
+    return {
+        "_id": f"{email}|{img.uid}", "owner_email": email, "uid": img.uid, "category": img.category,
+        "label": img.label, "mime": img.mime, "size": img.size, "data": bytes(img.data), "thumb": img.thumb,
+        "created_at": _ms(img.created_at), "updated_at": _ms(img.updated_at),
+    }
 
 
 def _msg_doc(msg: WhatsAppMessage, key: str) -> Tuple[str, dict]:
@@ -216,6 +227,10 @@ def _collect(session: Session, _ctx) -> None:
                     key = conv_key(email, conv.phone_number)
                     uid, doc = _msg_doc(obj, key)
                     pending.append(("upsert", MSG_COLL, uid, doc))
+            elif isinstance(obj, MessageImage) and obj.owner_id and obj.uid:
+                email = _email_for(session, obj.owner_id)
+                if email:
+                    pending.append(("upsert", IMG_COLL, f"{email}|{obj.uid}", _image_doc(obj, email)))
         for obj in list(session.deleted):
             if isinstance(obj, WhatsAppMessage) and obj.conversation_id:
                 conv = session.get(WhatsAppConversation, obj.conversation_id)
@@ -227,6 +242,10 @@ def _collect(session: Session, _ctx) -> None:
                 email = _email_for(session, obj.owner_id)
                 if email:
                     pending.append(("delete", CONV_COLL, conv_key(email, obj.phone_number), None))
+            elif isinstance(obj, MessageImage) and obj.owner_id and obj.uid:
+                email = _email_for(session, obj.owner_id)
+                if email:
+                    pending.append(("delete", IMG_COLL, f"{email}|{obj.uid}", None))
     except Exception as err:  # never let mirroring break a save
         _warn(f"[chat_durability] could not prepare a chat for MongoDB: {err}")
 
@@ -317,6 +336,46 @@ def restore_for_user(db: Session, user: User) -> int:
     return restored
 
 
+def restore_images_for_user(db: Session, user: User) -> int:
+    """Bring this account's picture library back from MongoDB after the SQL database was reset (once per process)."""
+    if user is None or user.id in _restored_image_users:
+        return 0
+    mdb = _db()
+    if mdb is None:
+        return 0
+    email = (user.email or "").strip().lower()
+    try:
+        docs = list(mdb[IMG_COLL].find({"owner_email": email}))
+    except Exception as err:
+        _warn(f"[chat_durability] could not read pictures from MongoDB: {err}")
+        return 0
+    _restored_image_users.add(user.id)
+    if not docs:
+        return 0
+    restored = 0
+    db.info[_SKIP] = True
+    try:
+        have = {r[0] for r in db.query(MessageImage.uid).filter(MessageImage.owner_id == user.id).all()}
+        for d in docs:
+            if d["uid"] in have:
+                continue
+            db.add(MessageImage(
+                uid=d["uid"], owner_id=user.id, category=d.get("category") or "General", label=d.get("label") or "",
+                mime=d.get("mime") or "image/jpeg", size=d.get("size") or len(d["data"]), data=bytes(d["data"]),
+                thumb=d.get("thumb") or "",
+            ))
+            restored += 1
+        db.commit()
+    except Exception as err:
+        db.rollback()
+        _restored_image_users.discard(user.id)
+        _warn(f"[chat_durability] picture restore failed: {err}")
+        restored = 0
+    finally:
+        db.info.pop(_SKIP, None)
+    return restored
+
+
 # ─── one-time copy of everything already in the SQL database ─────────────────
 def backfill_all(session_factory) -> int:
     """Copy all existing chats to MongoDB (idempotent). Called once at startup on a background thread."""
@@ -336,6 +395,11 @@ def backfill_all(session_factory) -> int:
             for msg in db.query(WhatsAppMessage).filter(WhatsAppMessage.conversation_id == conv.id).all():
                 uid, mdoc = _msg_doc(msg, key)
                 _enqueue(("upsert", MSG_COLL, uid, mdoc))
+                copied += 1
+        for img in db.query(MessageImage).all():
+            email = users.get(img.owner_id)
+            if email:
+                _enqueue(("upsert", IMG_COLL, f"{email}|{img.uid}", _image_doc(img, email)))
                 copied += 1
     except Exception as err:
         _warn(f"[chat_durability] backfill failed: {err}")
