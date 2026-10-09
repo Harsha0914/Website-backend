@@ -223,6 +223,12 @@ class MrLadWhatsAppClient:
 
     @classmethod
     def send_image_message(cls, conv_id: str, img_path: str, caption: str = "") -> Tuple[bool, str, dict]:
+        """
+        Send a picture with a caption into a conversation as ONE WhatsApp message.
+
+        Mr LAD documents the picture as `type: image` + `file_base64` + `content_type` + `caption`, so that is
+        tried first. If it is refused, the picture is uploaded and sent by media id as a second attempt.
+        """
         token, _ = cls.get_token()
         if not token:
             return False, "Auth failed", {}
@@ -231,61 +237,48 @@ class MrLadWhatsAppClient:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
+        url = f"{api_base}/api/conversations/{conv_id}/messages"
 
-        # Prefer Meta media_id via multipart upload for 100% reliable delivery without base64 limits
-        media_id = cls._upload_media(img_path, token)
-        if media_id:
-            payload = {
-                "type": "image",
-                "media_id": media_id,
-                "caption": caption,
-            }
-        else:
-            content_type = "image/png" if img_path.lower().endswith(".png") else "image/jpeg"
-            b64 = cls._get_flyer_b64(img_path)
-            if not b64:
-                return False, f"Could not read image file: {img_path}", {}
-            payload = {
-                "type": "image",
-                "file_base64": b64,
-                "content_type": content_type,
-                "caption": caption,
-            }
+        content_type = "image/png" if img_path.lower().endswith(".png") else "image/jpeg"
+        attempts: List[Tuple[str, dict]] = []
+        b64 = cls._get_flyer_b64(img_path)
+        if b64:
+            attempts.append(("base64", {"type": "image", "file_base64": b64, "content_type": content_type, "caption": caption}))
+        if not attempts:
+            return False, f"Could not read image file: {img_path}", {}
 
-        try:
-            url = f"{api_base}/api/conversations/{conv_id}/messages"
-            res = requests.post(url, headers=headers, json=payload, timeout=60)
-            logger.info(f"[Mr LAD Flyer API] HTTP {res.status_code} | conv={conv_id} | body={res.text[:300]}")
-            if res.status_code == 200:
+        last_error = ""
+        for index in range(2):
+            if index == 1:  # second attempt: upload first, then send by media id
+                media_id = cls._upload_media(img_path, token)
+                if not media_id:
+                    break
+                attempts.append(("media_id", {"type": "image", "media_id": media_id, "caption": caption}))
+            if index >= len(attempts):
+                break
+            how, payload = attempts[index]
+            try:
+                res = requests.post(url, headers=headers, json=payload, timeout=90)
+                logger.info(f"[Mr LAD Picture API] ({how}) HTTP {res.status_code} | conv={conv_id} | body={res.text[:300]}")
+                data: dict = {}
                 try:
                     data = res.json()
                 except Exception:
                     data = {"raw": res.text}
-                # Accept success=true OR non-empty response as success
-                if data.get("success") or data.get("id") or data.get("data"):
+                if res.status_code == 200 and (data.get("success") or data.get("id") or data.get("data")):
                     inner = data.get("data") or data
-                    if isinstance(inner, dict):
-                        msg_id = inner.get("id") or inner.get("message_id") or f"wamid.LAD_{uuid.uuid4().hex[:12]}"
-                    else:
-                        msg_id = f"wamid.LAD_{uuid.uuid4().hex[:12]}"
-                    logger.info(f"[Mr LAD API] ✅ Flyer+caption sent to conv {conv_id}. ID: {msg_id}")
+                    msg_id = (inner.get("id") or inner.get("message_id")) if isinstance(inner, dict) else None
+                    msg_id = msg_id or f"wamid.LAD_{uuid.uuid4().hex[:12]}"
+                    logger.info(f"[Mr LAD API] Picture + caption sent to conv {conv_id} ({how}). ID: {msg_id}")
                     return True, msg_id, data
-                # API returned 200 but success=false — log and treat as failure
-                err = data.get("detail") or data.get("error") or data.get("message") or str(data)
-                logger.warning(f"[Mr LAD Flyer API] 200 but success=false: {err}")
-                return False, str(err), data
-            else:
-                err_data = {}
-                try:
-                    err_data = res.json()
-                except Exception:
-                    pass
-                err = err_data.get("detail") or err_data.get("error") or res.text
-                logger.warning(f"[Mr LAD Flyer API] HTTP {res.status_code}: {err}")
-                return False, str(err), err_data
-        except Exception as e:
-            logger.error(f"[Mr LAD Flyer API Exception] {e}")
-            return False, str(e), {}
+                last_error = str(data.get("detail") or data.get("error") or data.get("message") or res.text)[:300]
+                logger.warning(f"[Mr LAD Picture API] ({how}) not accepted: HTTP {res.status_code} {last_error}")
+                print(f"[Mr LAD Picture API] ({how}) not accepted: HTTP {res.status_code} {last_error}")
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"[Mr LAD Picture API Exception] ({how}) {e}")
+                print(f"[Mr LAD Picture API Exception] ({how}) {e}")
+        return False, last_error or "The picture could not be sent", {}
 
     @classmethod
     def _admin_copy_number(cls) -> Optional[str]:
