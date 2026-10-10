@@ -36,7 +36,6 @@ import Footer from '../../components/layout/Footer';
 import MobileBottomNav from '../../components/layout/MobileBottomNav';
 import { GooglePlacesAutocomplete } from '../../components/location/GooglePlacesAutocomplete';
 import GoogleMapsConnectModal from '../../components/common/GoogleMapsConnectModal';
-import WhatsAppAnalyticsDashboard from '../../components/dashboard/WhatsAppAnalyticsDashboard';
 import { useShopStore } from '../../store/shopStore';
 import api from '../../services/api';
 import { resolveKeywordToCategories } from '../../utils/searchMatcher';
@@ -241,10 +240,8 @@ export default function UserDashboard() {
           <form onSubmit={handleSearchSubmit} className="ui-card ui-card-pad" aria-label="Find shops">
             {/* Step 1: where */}
             <section className="flex gap-4">
-              <span className="ui-step" aria-hidden="true">1</span>
               <div className="flex-1 min-w-0">
-                <h2 className="ui-h2">Where do you want to look?</h2>
-                <p className="ui-help mb-3">Type a place, or let us use your current location.</p>
+                <h2 className="sr-only">Where do you want to look?</h2>
 
                 <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex-1 min-w-0">
@@ -316,10 +313,8 @@ export default function UserDashboard() {
 
             {/* Step 2: how far */}
             <section className="flex gap-4">
-              <span className="ui-step" aria-hidden="true">2</span>
               <div className="flex-1 min-w-0">
-                <h2 className="ui-h2">How far?</h2>
-                <p className="ui-help mb-3">Distance from the place above.</p>
+                <h2 className="sr-only">How far?</h2>
                 <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Search distance">
                   {PRESET_DISTANCES.map((d) => (
                     <button
@@ -358,10 +353,8 @@ export default function UserDashboard() {
 
             {/* Step 3: what kind */}
             <section className="flex gap-4">
-              <span className="ui-step" aria-hidden="true">3</span>
               <div className="flex-1 min-w-0">
-                <h2 className="ui-h2">What kind of shop?</h2>
-                <p className="ui-help mb-3">Pick a type, or type what you are looking for.</p>
+                <h2 className="sr-only">What kind of shop?</h2>
 
                 <div className="flex flex-wrap gap-2" role="group" aria-label="Shop type">
                   {visibleCategories.map((c) => {
@@ -499,12 +492,6 @@ export default function UserDashboard() {
                 {googleConnected ? 'Change key' : 'Connect Google Maps'}
               </button>
             </div>
-          </section>
-
-          {/* WhatsApp activity */}
-          <section className="mt-10" aria-labelledby="wa-title">
-            <h2 id="wa-title" className="ui-h2 mb-4">Your WhatsApp activity</h2>
-            <WhatsAppAnalyticsDashboard />
           </section>
         </div>
       </main>
