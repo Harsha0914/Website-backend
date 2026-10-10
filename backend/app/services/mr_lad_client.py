@@ -96,12 +96,24 @@ class MrLadWhatsAppClient:
     # WhatsApp only lets a business send free text or a picture to someone who messaged it in the last 24 hours.
     # Anyone else (every shop that has not replied) can only be sent an APPROVED TEMPLATE.
     # Which approved template carries each of the app's two messages, best first:
-    TEMPLATE_PREFERENCE: Dict[str, List[str]] = {
-        # newest first: v3 are plain messages (no buttons); v2 (same wording, with buttons) is used only until v3 is approved
-        "offer-link": ["lexon_offer_link_v3", "lexon_offer_link_v2"],
-        "about-company": ["lexon_about_company_v3", "lexon_about_company_v2"],
+    # Each message has a template WITH a picture in its header and a plain-text one, best first.
+    #   v4 = picture header, no buttons      v1 = picture header, with two reply buttons (used only until v4 is approved)
+    #   v3 = text only, no buttons           v2 = text only, with two reply buttons   (used only until v3 is approved)
+    TEMPLATE_PREFERENCE: Dict[str, Dict[str, List[str]]] = {
+        "offer-link": {
+            "picture": ["lexon_offer_link_v4", "lexon_offer_link_v1"],
+            "text": ["lexon_offer_link_v3", "lexon_offer_link_v2"],
+        },
+        "about-company": {
+            "picture": ["lexon_about_company_v4", "lexon_about_company_v1"],
+            "text": ["lexon_about_company_v3", "lexon_about_company_v2"],
+        },
     }
-    DEFAULT_TEMPLATE = "lexon_offer_link_v3"   # for sends that do not name a message (never the old pitch template)
+    DEFAULT_KEY = "offer-link"
+    TWO_NAME_TEMPLATES = (
+        "lexon_offer_link_v1", "lexon_offer_link_v2", "lexon_offer_link_v3", "lexon_offer_link_v4",
+        "lexon_about_company_v1", "lexon_about_company_v2", "lexon_about_company_v3", "lexon_about_company_v4",
+    )
 
     _templates_cache: Tuple[float, Dict[str, Dict[str, Any]]] = (0.0, {})
 
@@ -125,23 +137,21 @@ class MrLadWhatsAppClient:
         return found
 
     @classmethod
-    def pick_template(cls, template_key: Optional[str]) -> Tuple[Optional[str], bool]:
+    def pick_template(cls, template_key: Optional[str], with_picture: bool = False) -> Tuple[Optional[str], bool]:
         """
-        (the template for this message, ready). Each message has its own template and nothing else is ever substituted:
-        if it is not approved (or cannot be sent) the answer is (None, False) and the send is refused with a clear reason.
+        (the template for this message, ready). Each message has its own templates and nothing else is ever substituted.
+        with_picture=True picks a template with a picture header (the picture is passed when sending); otherwise a
+        plain text one. If none is approved the answer is (None, False) and the send is refused with a clear reason.
         """
-        prefs = cls.TEMPLATE_PREFERENCE.get(template_key or "", [cls.DEFAULT_TEMPLATE])
-        # Mr LAD's send interface cannot attach a header picture, so a template with a picture/video/document header
-        # always fails there (WhatsApp error 132012). Only header-less templates are usable.
-        approved = {
-            n for n, t in cls.list_templates().items()
-            if t.get("status") == "APPROVED" and not (t.get("header_type") or "").strip()
-        }
+        key = template_key if template_key in cls.TEMPLATE_PREFERENCE else cls.DEFAULT_KEY
+        prefs = cls.TEMPLATE_PREFERENCE[key]["picture" if with_picture else "text"]
         known = cls.list_templates()
         if not known:  # the template list could not be read: trust the configured name and let the gateway decide
             return prefs[0], True
         for name in prefs:
-            if name in approved:
+            t = known.get(name) or {}
+            has_header = bool((t.get("header_type") or "").strip())
+            if t.get("status") == "APPROVED" and has_header == with_picture:
                 return name, True
         return None, False
 
@@ -498,7 +508,8 @@ class MrLadWhatsAppClient:
         display_name = recipient_name or "Shop Owner"
         # Validate against known approved templates in Mr LAD account
         # The template that carries the message the user chose (offer / about us). Nothing else is substituted.
-        chosen_template, _ready = cls.pick_template(template_key or "offer-link")
+        wants_picture = bool(image_url) and (bool(image_path) or send_flyer)
+        chosen_template, _ready = cls.pick_template(template_key or cls.DEFAULT_KEY, with_picture=wants_picture)
 
         # Check for test mode or missing credentials
         has_creds = bool(settings.LAD_API_TOKEN or settings.LAD_AUTH_PASSWORD)
@@ -683,7 +694,7 @@ class MrLadWhatsAppClient:
             logger.info(f"[Mr LAD API] Template dispatch to {recipient} with template '{chosen_template}'...")
             if template_parameters is not None:
                 params_list = template_parameters
-            elif chosen_template in ("lexon_offer_link_v2", "lexon_about_company_v2", "lexon_offer_link_v3", "lexon_about_company_v3"):
+            elif chosen_template in cls.TWO_NAME_TEMPLATES:
                 params_list = [display_name, display_name]
             else:
                 params_list = [display_name]
@@ -699,6 +710,10 @@ class MrLadWhatsAppClient:
                 "template_name": chosen_template,
                 "language_code": language_code,
             }
+            if wants_picture and (cls.list_templates().get(chosen_template, {}).get("header_type") or "").strip():
+                # a picture-header template: the gateway needs BOTH of these to fill the header (a URL alone is refused)
+                init_payload["header_type"] = "image"
+                init_payload["header_url"] = image_url
             res = _post(f"{api_base}/api/conversations/send-template-to-members", init_payload)
             init_data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
 
@@ -721,7 +736,8 @@ class MrLadWhatsAppClient:
                 wording = cls.render_template(chosen_template, params_list)
                 note_conv = existing_conv_id or (results[0].get("conversation_id") if results else None) or cls._find_conversation_id(recipient, token)
                 if wording and note_conv:
-                    cls.add_note(note_conv, f"WhatsApp message sent as template \u201c{chosen_template}\u201d:\n\n{wording}")
+                    picture_line = f"\n\nPicture in the header: {image_url}" if "header_url" in init_payload else ""
+                    cls.add_note(note_conv, f"WhatsApp message sent as template \u201c{chosen_template}\u201d:\n\n{wording}{picture_line}")
             except Exception as note_err:
                 logger.warning(f"[Mr LAD] could not add the wording note: {note_err}")
             if isinstance(init_data, dict):

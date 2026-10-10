@@ -599,6 +599,7 @@ def _public_picture_url(request, name: str) -> str:
 def send_mode(
     phone: str = Query(..., description="The shop's phone number"),
     template_key: Optional[str] = Query(None),
+    picture: bool = Query(False, description="True when a picture is attached to the message"),
     current_user=Depends(get_current_user),
 ):
     """
@@ -609,14 +610,20 @@ def send_mode(
 
     if settings.WHATSAPP_IS_TEST_MODE or not (settings.LAD_API_TOKEN or settings.LAD_AUTH_PASSWORD):
         return {"mode": "free", "template": None, "template_ready": True, "note": "test mode"}
-    template, ready = Lad.pick_template(template_key)
+    with_picture = bool(picture)
+    template, ready = Lad.pick_template(template_key, with_picture=with_picture)
     try:
         token, _ = Lad.get_token()
         conv_id = Lad._find_conversation_id(Lad._clean_phone(phone), token) if token else None
         open_window = bool(conv_id and token and Lad.window_open(conv_id, token))
     except Exception:
         open_window = False
-    return {"mode": "free" if open_window else "template", "template": template, "template_ready": bool(template and ready)}
+    return {
+        "mode": "free" if open_window else "template",
+        "template": template,
+        "template_ready": bool(template and ready),
+        "with_picture": with_picture and bool(template),
+    }
 
 
 # ─── 12. Bulk AI WhatsApp Broadcast to Multiple Shops ────────────────────────
@@ -770,7 +777,12 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                 msg_body_record = personalized_msg
             sent_as = w_raw.get("template") if isinstance(w_raw, dict) and w_raw.get("mode") == "template" else None
             if sent_as:  # the shop had not written in the last 24 hours: only an approved template could be sent
-                msg_body_record = f"[Sent as the approved WhatsApp template: {sent_as}]\n\n{personalized_msg}"
+                picture_marker = ""
+                if image_path:
+                    picture_marker = f"[Attached picture #{payload.image_id}: {image_label}]\n\n"
+                elif should_send_flyer:
+                    picture_marker = "[Attached: EasyBillBro Restaurant Billing & POS Flyer]\n\n"
+                msg_body_record = f"{picture_marker}[Sent as the approved WhatsApp template: {sent_as}]\n\n{personalized_msg}"
             outbound_msg = WhatsAppMessage(
                 conversation_id=conv.id,
                 direction=WhatsAppDirection.OUTBOUND,
