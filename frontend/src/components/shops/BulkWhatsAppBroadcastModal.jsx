@@ -3,10 +3,13 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
   X, Check, ArrowLeft, Search, Loader2, Send, Clock, AlertCircle, CheckCircle2, XCircle,
-  MinusCircle, Pause, RotateCcw, MessageCircle, Play,
+  MinusCircle, Pause, RotateCcw, MessageCircle, Play, Phone, ArrowRight, Users,
 } from 'lucide-react';
 import { sendDirectWhatsAppPitch, formatPhoneNumber } from '../../services/whatsappService';
 import { WHATSAPP_TEMPLATES, DEFAULT_TEMPLATE_ID, getTemplate, fillTemplate } from '../../services/whatsappTemplates';
+import MessageImagePicker, { FLYER_VALUE, pictureSrc } from '../whatsapp/MessageImagePicker';
+import { imageCategoryFor, dominantImageCategory } from '../../utils/imageTools';
+import { useContactedShops, contactedAt, contactedAgo, refreshContacted } from '../../services/contactedShops';
 
 const GAP_BETWEEN_MESSAGES_MS = 2000; // a short pause between contacts keeps WhatsApp happy
 const SECONDS_PER_CONTACT = 4;        // rough, for the "about N minutes left" hint
@@ -41,6 +44,7 @@ function StatusMark({ status }) {
  */
 export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = [], onBroadcastComplete, onlyNoWebsiteDefault = false }) {
   const [step, setStep] = useState('select'); // 'select' | 'message' | 'send'
+  const contactedState = useContactedShops(); // shops already messaged in the last 7 days
   const [selected, setSelected] = useState(() => new Set());
   const [query, setQuery] = useState('');
   const [onlyNoSite, setOnlyNoSite] = useState(onlyNoWebsiteDefault);
@@ -48,7 +52,9 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
 
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID);
   const [message, setMessage] = useState(getTemplate(DEFAULT_TEMPLATE_ID).body);
-  const [attachFlyer, setAttachFlyer] = useState(getTemplate(DEFAULT_TEMPLATE_ID).includeFlyer);
+  const [image, setImage] = useState(getTemplate(DEFAULT_TEMPLATE_ID).includeFlyer ? FLYER_VALUE : null);
+  const [library, setLibrary] = useState([]);       // the account's pictures (loaded by the picker)
+  const [matchPerShop, setMatchPerShop] = useState(false); // use each shop's own type of picture when there is one
 
   const [queue, setQueue] = useState([]);
   const [running, setRunning] = useState(false);
@@ -61,7 +67,8 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
   // Only shops with a real phone number can be messaged.
   const contacts = useMemo(() => shops
     .map((s, i) => ({ shop: s, key: shopKey(s, i), name: s.name || s.shop_name || 'Shop', phone: formatPhoneNumber(s.phone || s.phone_number) }))
-    .filter((c) => c.phone), [shops]);
+    .filter((c) => c.phone)
+    .map((c) => ({ ...c, contactedAt: contactedAt(contactedState, c.phone) })), [shops, contactedState]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -129,7 +136,18 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
       const item = queueRef.current.find((x) => x.key === key);
       patch(key, { status: 'sending', note: '' });
       try {
-        const res = await sendDirectWhatsAppPitch(item.shop, fillTemplate(message, item.name), item.phone, attachFlyer, { silent: true });
+        // Which picture goes to THIS shop: its own type's picture if asked and available, else the chosen one.
+        let imageId = null;
+        let flyer = false;
+        if (matchPerShop) {
+          const match = library.find((i) => i.category === imageCategoryFor(item.shop.category));
+          if (match) imageId = match.id;
+        }
+        if (!imageId) {
+          if (image?.kind === 'library') imageId = image.id;
+          else if (image?.kind === 'flyer') flyer = true;
+        }
+        const res = await sendDirectWhatsAppPitch(item.shop, fillTemplate(message, item.name), item.phone, flyer, { silent: true, imageId, templateKey: templateId });
         if (res?.status === 'failed') throw new Error(res.error || 'The message could not be sent');
         patch(key, { status: res?.status === 'simulated' ? 'test' : 'sent', note: '' });
       } catch (err) {
@@ -147,13 +165,14 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
       if (n < todo.length - 1 && !stopRef.current) await sleep(GAP_BETWEEN_MESSAGES_MS);
     }
     setRunning(false);
-  }, [message, attachFlyer]);
+  }, [message, image, library, matchPerShop, templateId]);
 
   // Tell the parent once, when everything that was going to be sent has finished.
   useEffect(() => {
     if (step !== 'send' || running || !total || reportedRef.current) return;
     if (counts.pending === 0 && counts.sending === 0) {
       reportedRef.current = true;
+      refreshContacted();
       if (onBroadcastComplete) onBroadcastComplete({ sent: counts.sent + counts.test, failed: counts.failed, skipped: counts.skipped });
     }
   }, [step, running, total, counts, onBroadcastComplete]);
@@ -179,14 +198,17 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
-  const selectFirst = (n) => setSelected(new Set(visible.slice(0, n).map((c) => c.key)));
-  const selectAllVisible = () => setSelected((prev) => new Set([...prev, ...visible.map((c) => c.key)]));
-  const allVisibleSelected = visible.length > 0 && visible.every((c) => selected.has(c.key));
+  // Shops messaged in the last 7 days cannot be picked: the server would skip them anyway.
+  const pickable = visible.filter((c) => !c.contactedAt);
+  const alreadyContactedCount = contacts.filter((c) => c.contactedAt).length;
+  const selectFirst = (n) => setSelected(new Set(pickable.slice(0, n).map((c) => c.key)));
+  const selectAllVisible = () => setSelected((prev) => new Set([...prev, ...pickable.map((c) => c.key)]));
+  const allVisibleSelected = pickable.length > 0 && pickable.every((c) => selected.has(c.key));
 
   const pickTemplate = (t) => {
     setTemplateId(t.id);
     setMessage(t.body);
-    setAttachFlyer(t.includeFlyer);
+    setImage((current) => current ?? (t.includeFlyer ? FLYER_VALUE : null));
   };
 
   if (!isOpen) return null;
@@ -210,61 +232,80 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
         role="dialog"
         aria-modal="true"
         aria-labelledby="bulk-wa-title"
-        className="ui-card w-full flex flex-col sm:max-w-2xl"
-        style={{ maxHeight: '94vh', height: step === 'message' ? 'auto' : '94vh', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, boxShadow: 'var(--ui-shadow-lg)' }}
+        className="ui-card qs-modal w-full flex flex-col sm:max-w-2xl"
+        style={{ maxHeight: '94vh', height: step === 'message' ? 'auto' : '94vh' }}
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b flex items-start gap-3" style={{ borderColor: 'var(--ui-border)' }}>
-          {step === 'message' && (
-            <button type="button" onClick={() => setStep('select')} className="ui-btn ui-btn-ghost ui-btn-sm" aria-label="Back to shops">
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        <div className="qs-head">
+          <div className="flex items-start gap-3">
+            {step === 'message' && (
+              <button type="button" onClick={() => setStep('select')} className="qs-head-btn" aria-label="Back to shops">
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+            <div className="flex-1 min-w-0">
+              <h2 id="bulk-wa-title" className="qs-title">
+                {step === 'select' && 'Quick Select'}
+                {step === 'message' && 'Choose and check the message'}
+                {step === 'send' && (finished ? 'Finished' : 'Sending messages')}
+              </h2>
+              <p className="qs-sub">
+                {step === 'select' && 'Tick the shops you want to message. They are sent one at a time.'}
+                {step === 'message' && 'Pick a template, check the wording and the picture.'}
+                {step === 'send' && 'Keep this window open until all messages are done.'}
+              </p>
+            </div>
+            <button type="button" onClick={onClose} disabled={!canClose} className="qs-head-btn" aria-label="Close" title={canClose ? 'Close' : 'Stop sending first'}>
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
-          )}
-          <div className="flex-1 min-w-0">
-            <h2 id="bulk-wa-title" className="font-bold text-base" style={{ color: 'var(--ui-text)' }}>
-              {step === 'select' && 'Send to several shops'}
-              {step === 'message' && 'Choose and check the message'}
-              {step === 'send' && (finished ? 'Finished' : 'Sending messages')}
-            </h2>
-            <p className="text-sm" style={{ color: 'var(--ui-muted)' }}>Step {stepIndex} of 3 · one shop at a time</p>
           </div>
-          <button type="button" onClick={onClose} disabled={!canClose} className="ui-btn ui-btn-ghost ui-btn-sm" aria-label="Close" title={canClose ? 'Close' : 'Stop sending first'}>
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <ol className="qs-steps" aria-label="Progress">
+            {['Choose shops', 'Message', 'Send'].map((label, idx) => {
+              const n = idx + 1;
+              const state = n < stepIndex ? 'done' : n === stepIndex ? 'current' : 'todo';
+              return (
+                <li key={label} className={`qs-step qs-step-${state}`} aria-current={state === 'current' ? 'step' : undefined}>
+                  <span className="qs-step-dot">{state === 'done' ? <Check className="h-3 w-3" aria-hidden="true" /> : n}</span>
+                  {label}
+                </li>
+              );
+            })}
+          </ol>
         </div>
 
         {/* ───────── Step 1: choose shops ───────── */}
         {step === 'select' && (
           <>
-            <div className="px-5 pt-4 space-y-3 border-b pb-3" style={{ borderColor: 'var(--ui-border)' }}>
+            <div className="qs-toolbar">
               <div className="relative">
                 <label htmlFor="bulk-search" className="sr-only">Search shops</label>
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--ui-muted)' }} aria-hidden="true" />
                 <input id="bulk-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by shop name or number" className="ui-input" style={{ paddingLeft: 40 }} autoComplete="off" />
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" className={`ui-chip ${onlyNoSite ? 'ui-chip-active' : ''}`} aria-pressed={onlyNoSite} onClick={() => setOnlyNoSite((v) => !v)}>
+              <div className="qs-picks">
+                <button type="button" className={`qs-pick ${onlyNoSite ? 'is-on' : ''}`} aria-pressed={onlyNoSite} onClick={() => setOnlyNoSite((v) => !v)}>
                   Only shops without a website
                 </button>
-                <button type="button" className="ui-chip" onClick={allVisibleSelected ? () => setSelected(new Set()) : selectAllVisible}>
-                  {allVisibleSelected ? 'Clear all' : `Select all ${visible.length}`}
+                <button type="button" className="qs-pick" onClick={allVisibleSelected ? () => setSelected(new Set()) : selectAllVisible}>
+                  {allVisibleSelected ? 'Clear all' : `Select all ${pickable.length}`}
                 </button>
-                <span className="inline-flex items-center gap-1.5">
-                  <label htmlFor="bulk-firstn" className="text-sm" style={{ color: 'var(--ui-text-2)' }}>or first</label>
+                <span className="qs-first">
+                  <label htmlFor="bulk-firstn">First</label>
                   <input
                     id="bulk-firstn" type="number" min="1" max={visible.length || 1} value={firstN}
                     onChange={(e) => setFirstN(e.target.value)}
-                    className="ui-input" style={{ width: 78, minHeight: 36, padding: '4px 10px' }}
+                    className="ui-input" style={{ width: 70, minHeight: 34, padding: '2px 10px' }}
                   />
-                  <button type="button" className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => selectFirst(Math.max(1, parseInt(firstN, 10) || 1))}>Select</button>
+                  <button type="button" className="qs-pick qs-pick-go" onClick={() => selectFirst(Math.max(1, parseInt(firstN, 10) || 1))}>Select</button>
                 </span>
               </div>
-              <p className="text-sm" style={{ color: 'var(--ui-text-2)' }} aria-live="polite">
-                <strong style={{ color: 'var(--ui-text)' }}>{selectedCount}</strong> selected · {visible.length} shown · {contacts.length} shops have a phone number
+              <p className="qs-count" aria-live="polite">
+                <span className="qs-count-badge"><Users className="h-3.5 w-3.5" aria-hidden="true" />{selectedCount} selected</span>
+                <span>{visible.length} shown · {contacts.length} shops have a phone number{alreadyContactedCount > 0 && ` · ${alreadyContactedCount} already contacted`}</span>
               </p>
             </div>
 
-            <ul className="flex-1 overflow-y-auto min-h-0" role="list">
+            <ul className="flex-1 overflow-y-auto min-h-0 qs-list" role="list">
               {visible.length === 0 && (
                 <li className="p-8 text-center text-sm" style={{ color: 'var(--ui-muted)' }}>
                   {contacts.length === 0 ? 'None of these shops has a phone number we can message.' : 'No shop matches. Try clearing the search or the filter.'}
@@ -274,13 +315,15 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                 const checked = selected.has(c.key);
                 const noSite = c.shop.website_status === 'NO_WEBSITE' || c.shop.website_status === 'WEBSITE_UNREACHABLE';
                 return (
-                  <li key={c.key} className="border-b" style={{ borderColor: 'var(--ui-border)' }}>
-                    <label className="flex items-center gap-3 px-5 py-3 cursor-pointer" style={{ background: checked ? 'var(--ui-primary-soft)' : 'transparent' }}>
-                      <input type="checkbox" checked={checked} onChange={() => toggle(c.key)} className="h-4 w-4 shrink-0" />
+                  <li key={c.key}>
+                    <label className={`qs-row ${checked ? 'is-checked' : ''} ${c.contactedAt ? 'is-contacted' : ''}`} title={c.contactedAt ? 'You already messaged this shop in the last 7 days' : undefined}>
+                      <input type="checkbox" checked={checked} disabled={Boolean(c.contactedAt)} onChange={() => toggle(c.key)} className="qs-check" />
+                      <span className="qs-avatar" aria-hidden="true">{(c.name || '?').trim().charAt(0).toUpperCase()}</span>
                       <span className="min-w-0 flex-1">
-                        <span className="block font-semibold text-sm truncate" style={{ color: 'var(--ui-text)' }}>{c.name}</span>
-                        <span className="block text-xs" style={{ color: 'var(--ui-muted)' }}>+{c.phone}</span>
+                        <span className="qs-name">{c.name}</span>
+                        <span className="qs-phone"><Phone className="h-3 w-3" aria-hidden="true" />+{c.phone}</span>
                       </span>
+                      {c.contactedAt && <span className="ui-badge ui-badge-info shrink-0"><Check className="h-3 w-3" aria-hidden="true" />Contacted {contactedAgo(c.contactedAt)}</span>}
                       <span className={`ui-badge ${noSite ? 'ui-badge-danger' : 'ui-badge-success'} shrink-0`}>{noSite ? 'No website' : 'Has website'}</span>
                     </label>
                   </li>
@@ -288,12 +331,13 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
               })}
             </ul>
 
-            <div className="px-5 py-4 border-t flex flex-wrap items-center justify-between gap-2" style={{ borderColor: 'var(--ui-border)' }}>
+            <div className="qs-foot">
               <p className="text-sm" style={{ color: selectedCount > DAILY_LIMIT_HINT ? 'var(--ui-warning)' : 'var(--ui-muted)' }}>
-                {selectedCount > DAILY_LIMIT_HINT ? `The daily limit is about ${DAILY_LIMIT_HINT} messages; the rest will wait.` : 'Shops contacted in the last 7 days are skipped automatically.'}
+                {selectedCount > DAILY_LIMIT_HINT ? `The daily limit is about ${DAILY_LIMIT_HINT} messages; the rest will wait.` : 'Shops you contacted in the last 7 days are skipped.'}
               </p>
-              <button type="button" disabled={selectedCount === 0} onClick={() => setStep('message')} className="ui-btn ui-btn-primary">
+              <button type="button" disabled={selectedCount === 0} onClick={() => setStep('message')} className="ui-btn ui-btn-primary qs-next">
                 Next: choose the message ({selectedCount})
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
           </>
@@ -329,21 +373,43 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                 <p className="ui-help mt-1">The text <code>{'{shop_name}'}</code> is replaced with each shop's own name.</p>
               </div>
 
+              <div className="ui-notice ui-notice-info" role="note">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                <span>
+                  WhatsApp only allows free text and your own pictures to shops that messaged you in the last 24 hours. For every other shop the first
+                  message goes as the approved template for this message, with fixed wording and picture.
+                </span>
+              </div>
+
+              <MessageImagePicker
+                value={image}
+                onChange={setImage}
+                category={dominantImageCategory(contacts.filter((c) => selected.has(c.key)).map((c) => c.shop))}
+                onLibraryLoaded={setLibrary}
+              />
+
+              {library.length > 0 && (
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" checked={matchPerShop} onChange={(e) => setMatchPerShop(e.target.checked)} className="mt-1 h-4 w-4" />
+                  <span className="text-sm" style={{ color: 'var(--ui-text-2)' }}>
+                    <strong style={{ color: 'var(--ui-text)' }}>Use a matching picture for each shop's type</strong><br />
+                    A cafe gets one of your cafe pictures, a restaurant one of your restaurant pictures. Shops without a match get the picture chosen above.
+                  </span>
+                </label>
+              )}
+
               <div>
                 <p className="ui-label">Example for {previewName}</p>
                 <div className="rounded-2xl p-3" style={{ background: 'var(--ui-surface-2)', border: '1px solid var(--ui-border)' }}>
-                  <div className="ml-auto max-w-[92%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap" style={{ background: 'var(--ui-success-soft)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderBottomRightRadius: 4, overflowWrap: 'anywhere', lineHeight: 1.5 }}>
-                    {fillTemplate(message, previewName).trim() || <span className="ui-muted">Your message is empty.</span>}
+                  <div className="ml-auto max-w-[92%] rounded-2xl px-3 py-3 text-sm" style={{ background: 'var(--ui-success-soft)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderBottomRightRadius: 4, overflowWrap: 'anywhere', lineHeight: 1.5 }}>
+                    {image && (
+                      <img src={pictureSrc(image)} alt="The picture that is sent with the message" className="w-full rounded-xl mb-2" style={{ maxHeight: 360, objectFit: 'cover', objectPosition: image.kind === 'flyer' ? 'top' : 'center' }} />
+                    )}
+                    <div className="whitespace-pre-wrap px-1">{fillTemplate(message, previewName).trim() || <span className="ui-muted">Your message is empty.</span>}</div>
                   </div>
                 </div>
               </div>
 
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" checked={attachFlyer} onChange={(e) => setAttachFlyer(e.target.checked)} className="mt-1 h-4 w-4" />
-                <span className="text-sm" style={{ color: 'var(--ui-text-2)' }}>
-                  <strong style={{ color: 'var(--ui-text)' }}>Also send our flyer images</strong> with every message.
-                </span>
-              </label>
             </div>
 
             <div className="px-5 py-4 border-t flex flex-wrap items-center justify-between gap-2" style={{ borderColor: 'var(--ui-border)' }}>

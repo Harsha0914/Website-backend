@@ -177,3 +177,41 @@ def test_in_app_chat_conversations_are_private_even_from_administrators(client, 
         assert client.get(f"/api/chat/conversations/{cid}", headers=_hdr(intruder)).status_code == 404
         assert client.post(f"/api/chat/conversations/{cid}/messages", headers=_hdr(intruder), json={"message": "hi"}).status_code == 404
     assert client.get("/api/chat/conversations", headers=_hdr(bob)).json() == []
+
+
+# ─── "already contacted" markers on the shop cards ───────────────────────────
+def _outbound(db, conv, status, when):
+    from app.models.whatsapp import WhatsAppDirection, WhatsAppSenderType
+    db.add(WhatsAppMessage(conversation_id=conv.id, direction=WhatsAppDirection.OUTBOUND, status=status, created_at=when,
+                           message_body="hi", sender_type=WhatsAppSenderType.AI_BOT, sender_name="n"))
+    db.commit()
+
+
+def test_recently_contacted_lists_only_my_own_shops_from_the_last_7_days(client, db_session, alice, bob):
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+
+    def chat(owner, phone):
+        c = WhatsAppConversation(owner_id=owner.id, phone_number=phone, shop_name="S")
+        db_session.add(c)
+        db_session.commit()
+        db_session.refresh(c)
+        return c
+
+    _outbound(db_session, chat(alice, "919876543210"), "sent", now - timedelta(days=2))
+    _outbound(db_session, chat(alice, "919811122233"), "sent", now - timedelta(days=9))      # too old: can be messaged again
+    _outbound(db_session, chat(alice, "919822233344"), "failed", now - timedelta(days=1))    # never left: not contacted
+    _outbound(db_session, chat(alice, "919833344455"), "simulated", now - timedelta(days=1)) # test mode: not contacted
+    _outbound(db_session, chat(bob, "919844455566"), "sent", now - timedelta(days=1))        # someone else's shop
+
+    mine = client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(alice)).json()
+    assert mine["days"] == 7
+    assert [c["phone_key"] for c in mine["contacted"]] == ["9876543210"]
+    assert mine["contacted"][0]["last_sent_at"].startswith(str(now.year))
+
+    theirs = client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(bob)).json()
+    assert [c["phone_key"] for c in theirs["contacted"]] == ["9844455566"]
+
+
+def test_recently_contacted_needs_a_login(client):
+    assert client.get("/api/ai-whatsapp/recently-contacted").status_code in (401, 403)

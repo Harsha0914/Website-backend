@@ -16,6 +16,8 @@ import { useShopStore } from '../../store/shopStore';
 import { getGoogleMapsUrl, getGoogleMapsDirectionsUrl } from '../../services/locationService';
 import { formatPhoneNumber } from '../../services/whatsappService';
 import WhatsAppLaunchModal from '../chat/WhatsAppLaunchModal';
+import { useContactedShops, contactedAt, canMessageAgainOn, refreshContacted } from '../../services/contactedShops';
+import { formatDateTimeIST } from '../../utils/time';
 
 /**
  * One shop. Reads top to bottom: who it is, where it is, whether it has a website,
@@ -34,6 +36,9 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
     ? (String(shopRawPhone).startsWith('+') ? shopRawPhone : `+91 ${shopRawPhone}`)
     : null;
   const canMessage = Boolean(normalizedPhone);
+  const tone = { NO_WEBSITE: '#ef4444', WEBSITE_UNREACHABLE: '#f59e0b', WEBSITE_AVAILABLE: '#10b981' }[business.website_status] || '#94a3b8';
+  const contacted = useContactedShops();
+  const lastContacted = canMessage ? contactedAt(contacted, normalizedPhone) : null;
 
   const googleMapsUrl = getGoogleMapsUrl(business);
   const directionsUrl = getGoogleMapsDirectionsUrl(business, userGps);
@@ -44,13 +49,14 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
     <>
       <article
         onClick={onSelect}
-        className="ui-card ui-card-hover p-4 sm:p-5 cursor-pointer"
-        style={isSelected ? { borderColor: 'var(--ui-primary)', boxShadow: 'var(--ui-focus)' } : undefined}
+        className="ui-card ui-card-hover shop-card cursor-pointer"
+        style={{ '--tone': tone, ...(isSelected ? { borderColor: 'var(--ui-primary)', boxShadow: 'var(--ui-focus)' } : {}) }}
         aria-label={business.name}
       >
         {/* Name + distance */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+        <div className="flex items-start gap-3">
+          <span className="shop-avatar" aria-hidden="true">{(business.name || '?').trim().charAt(0).toUpperCase()}</span>
+          <div className="min-w-0 flex-1">
             <h3 className="text-base font-semibold leading-snug" style={{ color: 'var(--ui-text)' }}>
               <Link to={`/shop/${business.id}`} onClick={stop} className="hover:underline">
                 {business.name}
@@ -111,7 +117,7 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
 
         {/* Actions */}
         <div className="mt-4 pt-4 border-t flex flex-wrap items-center gap-2" style={{ borderColor: 'var(--ui-border)' }}>
-          {!pitchSent && !hasWebsite && (
+          {!pitchSent && !lastContacted && !hasWebsite && (
             <button
               type="button"
               onClick={(e) => { stop(e); setShowWAModal(true); }}
@@ -128,6 +134,17 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
             <span className="ui-badge ui-badge-success" role="status">
               <Check className="h-3.5 w-3.5" aria-hidden="true" />
               Message sent
+            </span>
+          )}
+
+          {!pitchSent && lastContacted && (
+            <span
+              className="contacted-chip"
+              role="status"
+              title={`You messaged this shop on ${formatDateTimeIST(lastContacted)}. You can message it again from ${canMessageAgainOn(lastContacted, contacted.days)}.`}
+            >
+              <Check className="h-4 w-4" aria-hidden="true" />
+              Already contacted
             </span>
           )}
 
@@ -150,7 +167,7 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
         </div>
       </article>
 
-      <WhatsAppLaunchModal business={business} isOpen={showWAModal} onClose={() => setShowWAModal(false)} onSent={() => setPitchSent(true)} />
+      <WhatsAppLaunchModal business={business} isOpen={showWAModal} onClose={() => setShowWAModal(false)} onSent={() => { setPitchSent(true); refreshContacted(); }} />
     </>
   );
 }

@@ -142,6 +142,16 @@ export async function simulateIncomingWhatsAppMessage({ phone_number, shop_name,
   return res.data;
 }
 
+export async function getWhatsAppSummary() {
+  const res = await api.get('/whatsapp/summary');
+  return res.data;
+}
+
+export async function getWhatsAppDay(date) {
+  const res = await api.get('/whatsapp/day', { params: { date } });
+  return res.data;
+}
+
 export async function getWhatsAppStats(period = 'today', startDate = null, endDate = null) {
   const params = { period };
   if (startDate) params.start_date = startDate;
@@ -240,7 +250,7 @@ export async function broadcastWhatsAppToAllShops({ shops, customMessage, autoAI
  * Directly sends an outreach pitch or message to a specific shop person via Lexon IT WhatsApp API.
  * Dispatches directly along with the EasyBillBro Restaurant Billing flyer image.
  */
-export async function sendDirectWhatsAppPitch(business, customMessage = null, overridePhone = null, includeFlyer = true, { silent = false } = {}) {
+export async function sendDirectWhatsAppPitch(business, customMessage = null, overridePhone = null, includeFlyer = true, { silent = false, imageId = null, templateKey = null } = {}) {
   const shopName = business?.name || business?.shop_name || 'Local Shop';
   const rawPhone = overridePhone || business?.phone || business?.phone_number || '';
 
@@ -270,7 +280,9 @@ export async function sendDirectWhatsAppPitch(business, customMessage = null, ov
     shops: shopsPayload,
     custom_message: messageToSend,
     auto_ai_enabled: true,
-    include_flyer: includeFlyer,
+    include_flyer: imageId ? false : includeFlyer,
+    image_id: imageId || undefined,
+    template_key: templateKey || undefined,
   });
 
   const firstResult = res.data?.results?.[0];
@@ -401,8 +413,8 @@ export function launchDirectWhatsAppChat(business, customMsg = null, mode = 'web
   return { success: true, phone: phoneDigits, shopName, message };
 }
 
-
-
-
-
-
+/** How a message to this number will really go out: 'free' (the shop wrote in the last 24 h) or 'template'. */
+export async function getWhatsAppSendMode(phone, templateKey, picture = false) {
+  const res = await api.get('/ai-whatsapp/send-mode', { params: { phone, template_key: templateKey || undefined, picture: picture ? 'true' : undefined } });
+  return res.data; // { mode, template, template_ready }
+}

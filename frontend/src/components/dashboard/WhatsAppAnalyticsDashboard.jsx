@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatTimeIST } from '../../utils/time';
 import {
   MessageCircle,
   Bot,
@@ -848,7 +849,7 @@ export default function WhatsAppAnalyticsDashboard() {
                             </button>
                           )}
                           <span className="text-[11px] font-mono text-slate-400">
-                            {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatTimeIST(log.created_at)}
                           </span>
                           <a
                             href={log.phone_number ? `https://web.whatsapp.com/send?phone=${log.phone_number.replace(/\D/g, '')}` : 'https://web.whatsapp.com'}

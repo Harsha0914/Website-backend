@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, UserCheck, UserX, Trash2, Shield, User } from 'lucide-react';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import api from '../../services/api';
+import { formatDateIST } from '../../utils/time';
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -127,7 +128,7 @@ export default function AdminUsers() {
                       </span>
                     </td>
                     <td className="p-4 text-slate-500">
-                      {new Date(u.created_at).toLocaleDateString()}
+                      {formatDateIST(u.created_at)}
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-2">

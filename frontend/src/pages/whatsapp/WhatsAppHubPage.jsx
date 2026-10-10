@@ -15,11 +15,15 @@ import {
   Store,
   Copy,
 } from 'lucide-react';
+import { formatTimeIST, formatDateIST, formatYmdIST, daysAgoIST, parseServerDate } from '../../utils/time';
+import WhatsAppActivitySummary from '../../components/whatsapp/WhatsAppActivitySummary';
+import { listMessageImages } from '../../services/messageImages';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
 import {
   getWhatsAppConversations,
   getWhatsAppConversation,
+  getWhatsAppDay,
   toggleWhatsAppAIBot,
   sendWhatsAppManualMessage,
   simulateIncomingWhatsAppMessage,
@@ -34,33 +38,47 @@ function prettyPhone(raw) {
 }
 
 function timeOf(value) {
-  const d = value ? new Date(value) : null;
-  return d && !isNaN(d) ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  return formatTimeIST(value);
 }
 
-/** Chat-list time: time today, "Yesterday", otherwise the date. */
+/** Chat-list time: the time if it is today (India), "Yesterday", otherwise the date. */
 function listTime(value) {
-  const d = value ? new Date(value) : null;
-  if (!d || isNaN(d)) return '';
-  const today = new Date();
-  const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const diffDays = Math.round((startOf(today) - startOf(d)) / 86400000);
-  if (diffDays === 0) return timeOf(value);
-  if (diffDays === 1) return 'Yesterday';
-  return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  const ago = daysAgoIST(value);
+  if (ago === null) return '';
+  if (ago <= 0) return formatTimeIST(value);
+  if (ago === 1) return 'Yesterday';
+  return formatDateIST(value, { day: 'numeric', month: 'short' });
 }
 
 function dayLabel(value) {
-  const d = value ? new Date(value) : new Date();
-  const today = new Date();
-  const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const diffDays = Math.round((startOf(today) - startOf(d)) / 86400000);
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+  const ago = daysAgoIST(value || new Date());
+  if (ago === null || ago <= 0) return 'Today';
+  if (ago === 1) return 'Yesterday';
+  return formatDateIST(value, { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 const cleanBody = (text) => (text || '').replace(/^🤖 \[(?:Lexon IT|Meta) AI Assistant\]: /, '');
+
+/**
+ * Messages sent with a picture are stored as "[Attached ...] text". Split that note from the text so the page can
+ * show the picture itself next to the words.
+ */
+const FLYER_NOTE = /^\[Attached: EasyBillBro Restaurant Billing & POS Flyer\]\s*/;
+const PICTURE_NOTE = /^\[Attached picture(?: #(\d+))?: ([^\]]*)\]\s*/;
+
+function splitAttachment(body) {
+  const text = cleanBody(body);
+  const flyer = FLYER_NOTE.exec(text);
+  if (flyer) return { attachment: { kind: 'flyer', label: 'EasyBillBro flyer' }, text: text.slice(flyer[0].length) };
+  const picture = PICTURE_NOTE.exec(text);
+  if (picture) return { attachment: { kind: 'picture', id: picture[1] ? Number(picture[1]) : null, label: picture[2] }, text: text.slice(picture[0].length) };
+  return { attachment: null, text };
+}
+
+const listPreview = (body) => {
+  const { attachment, text } = splitAttachment(body);
+  return attachment ? `📷 ${text.trim() || attachment.label}` : text;
+};
 
 /** Plain-language delivery state for messages we sent. */
 function DeliveryMark({ status }) {
@@ -97,6 +115,12 @@ export default function WhatsAppHubPage() {
   const [sendError, setSendError] = useState('');
   const selectedIdRef = useRef(null);
   const bottomRef = useRef(null);
+  const chatCardRef = useRef(null);
+  const [pictureThumbs, setPictureThumbs] = useState({}); // picture id -> small preview, so sent pictures can be shown
+  const conversationsRef = useRef([]);
+  const [selectedDate, setSelectedDate] = useState(null); // an Indian calendar day (YYYY-MM-DD) or null
+  const [dayInfo, setDayInfo] = useState(null);
+  const [dayLoading, setDayLoading] = useState(false);
 
   const loadDetail = useCallback(async (conv) => {
     try {
@@ -120,7 +144,7 @@ export default function WhatsAppHubPage() {
     if (!quiet) setLoading(true);
     try {
       const raw = await getWhatsAppConversations();
-      const list = [...raw].sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0));
+      const list = [...raw].sort((a, b) => (parseServerDate(b.last_message_at)?.getTime() || 0) - (parseServerDate(a.last_message_at)?.getTime() || 0));
       setConversations(list);
       if (selectedIdRef.current == null && list.length > 0 && window.innerWidth >= 1024) {
         selectConversation(list[0]); // on a phone, start on the list instead
@@ -134,6 +158,12 @@ export default function WhatsAppHubPage() {
       setLoading(false);
     }
   }, [selectConversation]);
+
+  useEffect(() => {
+    listMessageImages()
+      .then((data) => setPictureThumbs(Object.fromEntries((data.images || []).map((i) => [i.id, i.thumb]))))
+      .catch(() => { /* pictures simply show as a label if the list cannot be loaded */ });
+  }, []);
 
   useEffect(() => {
     fetchConversations();
@@ -225,9 +255,36 @@ export default function WhatsAppHubPage() {
     }
   };
 
+  conversationsRef.current = conversations;
+
+  // Picking a date shows only that day's chats and opens the first one.
+  useEffect(() => {
+    if (!selectedDate) {
+      setDayInfo(null);
+      setDayLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setDayLoading(true);
+    getWhatsAppDay(selectedDate)
+      .then((info) => {
+        if (cancelled) return;
+        setDayInfo(info);
+        const first = info.chats?.[0];
+        const conv = first && conversationsRef.current.find((c) => c.id === first.conversation_id);
+        if (conv && window.innerWidth >= 1024) selectConversation(conv);
+        chatCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      })
+      .catch(() => { if (!cancelled) setDayInfo(null); })
+      .finally(() => { if (!cancelled) setDayLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedDate, selectConversation]);
+
+  const dayIds = selectedDate && dayInfo ? new Set(dayInfo.chats.map((c) => c.conversation_id)) : null;
   const q = searchQuery.trim().toLowerCase();
   const filteredConversations = conversations.filter((c) =>
-    !q || c.shop_name?.toLowerCase().includes(q) || String(c.phone_number || '').includes(q.replace(/\D/g, '') || '\u0000'));
+    (!dayIds || dayIds.has(c.id)) &&
+    (!q || c.shop_name?.toLowerCase().includes(q) || String(c.phone_number || '').includes(q.replace(/\D/g, '') || '\u0000')));
 
   const aiOn = !!activeConvDetail?.auto_ai_enabled;
   const waDigits = selectedConv ? String(selectedConv.phone_number || '').replace(/\D/g, '') : '';
@@ -249,19 +306,26 @@ export default function WhatsAppHubPage() {
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--ui-bg)' }}>
       <Navbar />
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-6 pb-24 md:pb-8 flex flex-col">
-        <header className="flex flex-wrap items-end justify-between gap-3 mb-4">
-          <div>
-            <h1 className="ui-h1">WhatsApp chats</h1>
-            <p className="ui-lead">Every message you send to a shop, and every reply, in one place.</p>
+      <main className="flex-1 flex flex-col">
+        <section className="finder-hero results-hero wa-hero">
+          <div className="finder-hero-inner results-hero-row">
+            <div className="min-w-0">
+              <h1>WhatsApp chats</h1>
+              <p>Every message you send to a shop, and every reply, in one place.</p>
+            </div>
+            <div className="results-actions">
+              <button type="button" onClick={() => fetchConversations()} className="results-btn results-btn-ghost">
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+                Refresh
+              </button>
+            </div>
           </div>
-          <button type="button" onClick={() => fetchConversations()} className="ui-btn ui-btn-secondary">
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
-            Refresh
-          </button>
-        </header>
+        </section>
 
-        <div className="ui-card overflow-hidden grid grid-cols-[minmax(0,1fr)] lg:grid-cols-12 min-w-0" style={{ minHeight: 600, height: 'calc(100vh - 230px)', maxHeight: 820 }}>
+        <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 wa-body pb-24 md:pb-8 flex flex-col">
+        <WhatsAppActivitySummary selectedDate={selectedDate} onSelectDate={setSelectedDate} dayInfo={dayInfo} dayLoading={dayLoading} />
+
+        <div ref={chatCardRef} className="ui-card wa-chat-card overflow-hidden grid grid-cols-[minmax(0,1fr)] lg:grid-cols-12 min-w-0" style={{ minHeight: 600, height: 'calc(100vh - 230px)', maxHeight: 820 }}>
           {/* ───────── Chat list ───────── */}
           <section
             aria-label="Chats"
@@ -283,12 +347,18 @@ export default function WhatsAppHubPage() {
                   autoComplete="off"
                 />
               </div>
+              {selectedDate && (
+                <div className="mt-2 flex items-center justify-between gap-2 text-sm rounded-lg px-3 py-2" style={{ background: 'var(--ui-primary-soft)', color: 'var(--ui-primary-text)' }} role="status">
+                  <span>Chats from <strong>{formatYmdIST(selectedDate)}</strong>{dayInfo ? ` (${dayInfo.chat_count})` : ''}</span>
+                  <button type="button" className="font-semibold underline" onClick={() => setSelectedDate(null)}>Show all</button>
+                </div>
+              )}
             </div>
 
             <ul className="flex-1 overflow-y-auto min-h-0" role="list">
               {filteredConversations.length === 0 ? (
                 <li className="p-8 text-center text-sm" style={{ color: 'var(--ui-muted)' }}>
-                  {loading ? 'Loading chats…' : conversations.length ? 'No chat matches your search.' : 'No chats yet. Send a message to a shop and it will show up here.'}
+                  {loading || dayLoading ? 'Loading chats…' : selectedDate && dayInfo && !dayInfo.chats.length ? 'No messages were sent or received on this day.' : conversations.length ? 'No chat matches your search.' : 'No chats yet. Send a message to a shop and it will show up here.'}
                 </li>
               ) : (
                 filteredConversations.map((conv) => {
@@ -315,7 +385,7 @@ export default function WhatsAppHubPage() {
                           </span>
                           <span className="block text-xs mt-0.5" style={{ color: 'var(--ui-muted)' }}>{prettyPhone(conv.phone_number)}</span>
                           <span className="block text-sm truncate mt-1" style={{ color: 'var(--ui-text-2)' }}>
-                            {cleanBody(conv.last_message) || 'No messages yet'}
+                            {listPreview(conv.last_message) || 'No messages yet'}
                           </span>
                           <span className={`ui-badge mt-2 ${conv.auto_ai_enabled ? 'ui-badge-success' : 'ui-badge-warning'}`}>
                             {conv.auto_ai_enabled ? 'AI replies on' : 'You reply'}
@@ -414,7 +484,21 @@ export default function WhatsAppHubPage() {
                             {incoming ? <Store className="h-3 w-3" aria-hidden="true" /> : isBot ? <Bot className="h-3 w-3" aria-hidden="true" /> : <UserCheck className="h-3 w-3" aria-hidden="true" />}
                             {who}
                           </p>
-                          <p className="whitespace-pre-wrap" style={{ lineHeight: 1.5, overflowWrap: 'anywhere' }}>{cleanBody(m.message_body)}</p>
+                          {(() => {
+                            const { attachment, text } = splitAttachment(m.message_body);
+                            const src = attachment?.kind === 'flyer' ? '/images/easybillbro-flyer.jpg' : attachment?.id ? pictureThumbs[attachment.id] : null;
+                            return (
+                              <>
+                                {attachment && src && (
+                                  <img src={src} alt={`Picture sent with this message: ${attachment.label}`} className="rounded-xl mb-2 w-full" style={{ maxWidth: 320, maxHeight: 280, objectFit: 'cover', objectPosition: 'top' }} />
+                                )}
+                                {attachment && !src && (
+                                  <p className="ui-badge ui-badge-neutral mb-2" style={{ whiteSpace: 'normal' }}>Picture sent: {attachment.label}</p>
+                                )}
+                                <p className="whitespace-pre-wrap" style={{ lineHeight: 1.5, overflowWrap: 'anywhere' }}>{text}</p>
+                              </>
+                            );
+                          })()}
                           <p className="mt-1 flex items-center justify-end gap-2 text-xs" style={{ color: 'var(--ui-muted)' }}>
                             <span>{timeOf(m.created_at)}</span>
                             {!incoming && <DeliveryMark status={m.status} />}
@@ -472,6 +556,7 @@ export default function WhatsAppHubPage() {
               </div>
             )}
           </section>
+        </div>
         </div>
       </main>
 

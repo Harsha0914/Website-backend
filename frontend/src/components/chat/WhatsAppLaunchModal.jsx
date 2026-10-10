@@ -2,8 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, ArrowLeft, Copy, Loader2, Send, AlertCircle, MessageCircle, FileText, Link2, Building2, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { formatPhoneNumber, sendDirectWhatsAppPitch } from '../../services/whatsappService';
+import { formatPhoneNumber, sendDirectWhatsAppPitch, getWhatsAppSendMode } from '../../services/whatsappService';
 import { WHATSAPP_TEMPLATES, getTemplate, fillTemplate } from '../../services/whatsappTemplates';
+import MessageImagePicker, { FLYER_VALUE, pictureSrc } from '../whatsapp/MessageImagePicker';
+import { imageCategoryFor } from '../../utils/imageTools';
+
+const TEMPLATE_NOTE = {
+  lexon_offer_link_v4: 'the approved “offer with link” template',
+  lexon_about_company_v4: 'the approved “About Lexon IT” template',
+  lexon_offer_link_v1: 'the approved “offer with link” template',
+  lexon_about_company_v1: 'the approved “About Lexon IT” template',
+  lexon_offer_link_v3: 'the approved “offer with link” template',
+  lexon_about_company_v3: 'the approved “About Lexon IT” template',
+  lexon_offer_link_v2: 'the approved “offer with link” template',
+  lexon_about_company_v2: 'the approved “About Lexon IT” template',
+};
 
 const TEMPLATE_ICONS = { 'offer-link': Link2, 'about-company': Building2 };
 
@@ -21,10 +34,13 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const [step, setStep] = useState('choose'); // 'choose' | 'edit' | 'sent'
   const [templateId, setTemplateId] = useState(null);
   const [message, setMessage] = useState('');
-  const [attachFlyer, setAttachFlyer] = useState(false);
+  const [image, setImage] = useState(null); // null = text only, or { kind: 'flyer' } / { kind: 'library', id, ... }
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [testPhone, setTestPhone] = useState('');
+  const [sendMode, setSendMode] = useState(null); // how this shop can really be messaged (24-hour rule)
+  const [testState, setTestState] = useState({ busy: false, ok: '', error: '' });
   const dialogRef = useRef(null);
 
   useEffect(() => {
@@ -32,10 +48,13 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
     setStep('choose');
     setTemplateId(null);
     setMessage('');
-    setAttachFlyer(false);
+    setImage(null);
     setSending(false);
     setError('');
     setCopied(false);
+    setTestPhone('');
+    setSendMode(null);
+    setTestState({ busy: false, ok: '', error: '' });
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -47,6 +66,16 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
     };
   }, [isOpen, business?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!isOpen || step !== 'edit' || !phoneDigits || !templateId) return undefined;
+    let cancelled = false;
+    setSendMode(null);
+    getWhatsAppSendMode(phoneDigits, templateId, !!image)
+      .then((info) => { if (!cancelled) setSendMode(info); })
+      .catch(() => { /* the note is only guidance; sending still works without it */ });
+    return () => { cancelled = true; };
+  }, [isOpen, step, phoneDigits, templateId, !!image]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!isOpen || !business) return null;
 
   const template = templateId ? getTemplate(templateId) : null;
@@ -56,7 +85,8 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const chooseTemplate = (t) => {
     setTemplateId(t.id);
     setMessage(fillTemplate(t.body, shopName));
-    setAttachFlyer(t.includeFlyer);
+    // keep a picture the user already chose; otherwise start from the template's default
+    setImage((current) => current ?? (t.includeFlyer ? FLYER_VALUE : null));
     setError('');
     setStep('edit');
   };
@@ -70,13 +100,36 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
     setSending(true);
     setError('');
     try {
-      await sendDirectWhatsAppPitch(business, message.trim(), phoneDigits, attachFlyer);
+      await sendDirectWhatsAppPitch(business, message.trim(), phoneDigits, image?.kind === 'flyer', {
+        imageId: image?.kind === 'library' ? image.id : null,
+        templateKey: templateId,
+      });
       setStep('sent');
       if (onSent) onSent();
     } catch (err) {
       setError(err?.message || 'The message could not be sent. Please try again.');
     } finally {
       setSending(false);
+    }
+  };
+
+  // Send exactly this message and picture to the user's OWN number, to see how it arrives on a phone.
+  const handleSendTest = async () => {
+    const digits = formatPhoneNumber(testPhone);
+    if (!digits) {
+      setTestState({ busy: false, ok: '', error: 'Please type your own WhatsApp number, for example 98765 43210.' });
+      return;
+    }
+    if (!message.trim()) return;
+    setTestState({ busy: true, ok: '', error: '' });
+    try {
+      await sendDirectWhatsAppPitch({ name: 'My test number' }, message.trim(), digits, image?.kind === 'flyer', {
+        imageId: image?.kind === 'library' ? image.id : null,
+        silent: true,
+      });
+      setTestState({ busy: false, ok: `Test sent to +${digits}. Open WhatsApp on that phone to see how it looks.`, error: '' });
+    } catch (err) {
+      setTestState({ busy: false, ok: '', error: err?.message || 'The test could not be sent.' });
     }
   };
 
@@ -148,8 +201,11 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
                           <span className="block font-semibold" style={{ color: 'var(--ui-text)' }}>{t.name}</span>
                           <span className="block text-sm mt-0.5" style={{ color: 'var(--ui-text-2)' }}>{t.tagline}</span>
                           <span className="block text-xs mt-2 line-clamp-2" style={{ color: 'var(--ui-muted)' }}>{preview}</span>
-                          <span className="ui-badge ui-badge-neutral mt-2">{t.includeFlyer ? 'Includes our flyer' : 'Text only'}</span>
+                          <span className="ui-badge ui-badge-neutral mt-2">{t.includeFlyer ? 'Sent with our flyer image' : 'Text only'}</span>
                         </span>
+                        {t.includeFlyer && (
+                          <img src="/images/easybillbro-flyer.jpg" alt="" className="shrink-0 rounded-lg border self-start" style={{ width: 64, borderColor: 'var(--ui-border)' }} />
+                        )}
                       </button>
                     </li>
                   );
@@ -189,22 +245,51 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
                 </div>
               </div>
 
+              {sendMode?.mode === 'template' && (
+                <div className="ui-notice ui-notice-warning" role="status">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>
+                    <strong>{shopName} has not messaged you in the last 24 hours.</strong> WhatsApp then only allows an approved template as a first
+                    message.{' '}
+                    {sendMode.template
+                      ? <>This will be sent as {TEMPLATE_NOTE[sendMode.template] || `the approved template “${sendMode.template}”`}. {sendMode.with_picture ? 'Your picture goes in its header.' : 'It carries no picture.'} Its wording is fixed. Your edits to the text are used once the shop replies.</>
+                      : <>The approved template for this message is not available yet, so it cannot be sent to this shop right now.</>}
+                  </span>
+                </div>
+              )}
+
+              <MessageImagePicker value={image} onChange={setImage} category={imageCategoryFor(business?.category)} />
+
               <div>
                 <p className="ui-label">What {shopName} will see</p>
                 <div className="rounded-2xl p-3" style={{ background: 'var(--ui-surface-2)', border: '1px solid var(--ui-border)' }}>
-                  <div className="ml-auto max-w-[92%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap" style={{ background: 'var(--ui-success-soft)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderBottomRightRadius: 4, overflowWrap: 'anywhere', lineHeight: 1.5 }}>
-                    {message.trim() || <span className="ui-muted">Your message is empty.</span>}
+                  <div className="ml-auto max-w-[92%] rounded-2xl px-3 py-3 text-sm" style={{ background: 'var(--ui-success-soft)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderBottomRightRadius: 4, overflowWrap: 'anywhere', lineHeight: 1.5 }}>
+                    {image && (
+                      <img src={pictureSrc(image)} alt="The picture that is sent with the message" className="w-full rounded-xl mb-2" style={{ maxHeight: 360, objectFit: 'cover', objectPosition: image.kind === 'flyer' ? 'top' : 'center' }} />
+                    )}
+                    <div className="whitespace-pre-wrap px-1">{message.trim() || <span className="ui-muted">Your message is empty.</span>}</div>
                   </div>
                 </div>
               </div>
 
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" checked={attachFlyer} onChange={(e) => setAttachFlyer(e.target.checked)} className="mt-1 h-4 w-4" />
-                <span className="text-sm" style={{ color: 'var(--ui-text-2)' }}>
-                  <strong style={{ color: 'var(--ui-text)' }}>Also send our flyer images</strong><br />
-                  The EasyBillBro and Lexon IT flyers go along with the message.
-                </span>
-              </label>
+              <details className="rounded-xl p-3" style={{ border: '1px solid var(--ui-border)', background: 'var(--ui-surface-2)' }}>
+                <summary className="cursor-pointer text-sm font-semibold" style={{ color: 'var(--ui-text-2)' }}>
+                  Send a test to my own number first
+                </summary>
+                <p className="ui-help mt-2">Sends this exact message and picture to your own WhatsApp number, not to the shop, so you can see how it arrives.</p>
+                <div className="mt-2 flex flex-wrap items-end gap-2">
+                  <div className="flex-1 min-w-[180px]">
+                    <label htmlFor="wa-test-phone" className="ui-label">Your WhatsApp number</label>
+                    <input id="wa-test-phone" type="tel" inputMode="tel" className="ui-input" placeholder="98765 43210" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} autoComplete="tel" />
+                  </div>
+                  <button type="button" className="ui-btn ui-btn-secondary" onClick={handleSendTest} disabled={testState.busy || !message.trim()}>
+                    {testState.busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
+                    {testState.busy ? 'Sending…' : 'Send test to me'}
+                  </button>
+                </div>
+                {testState.ok && <p className="ui-notice ui-notice-success mt-2" role="status">{testState.ok}</p>}
+                {testState.error && <p className="ui-notice ui-notice-error mt-2" role="alert">{testState.error}</p>}
+              </details>
 
               {!phoneDigits && (
                 <div className="ui-notice ui-notice-warning" role="alert">

@@ -595,6 +595,44 @@ def _public_picture_url(request, name: str, square: bool = False) -> str:
     return f"{base}/api/public/pictures/{name}{'/square' if square else ''}" if base else ""
 
 
+@router.get("/recently-contacted")
+def recently_contacted(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """
+    Shops THIS account has already messaged inside the repeat-contact window (7 days by default), with the time of the
+    latest message. The results pages use it to show "Already contacted" instead of the send button. It only ever
+    looks at the signed-in account's own chats, so it never reveals what another account did.
+    """
+    from datetime import timedelta
+    from sqlalchemy import func
+    from app.services.whatsapp_guard import _DELIVERED_STATUSES, phone_key
+
+    days = int(settings.WHATSAPP_REPEAT_COOLDOWN_DAYS or 0)
+    if days <= 0:
+        return {"days": 0, "contacted": []}
+    since = datetime.utcnow() - timedelta(days=days)
+    rows = (
+        db.query(WhatsAppConversation.phone_number, func.max(WhatsAppMessage.created_at))
+        .join(WhatsAppMessage, WhatsAppMessage.conversation_id == WhatsAppConversation.id)
+        .filter(
+            WhatsAppConversation.owner_id == current_user.id,
+            WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
+            WhatsAppMessage.status.in_(_DELIVERED_STATUSES),
+            WhatsAppMessage.created_at >= since,
+        )
+        .group_by(WhatsAppConversation.phone_number)
+        .all()
+    )
+    latest = {}
+    for phone, last in rows:
+        key = phone_key(phone)
+        if len(key) == 10 and (key not in latest or last > latest[key]):
+            latest[key] = last
+    return {
+        "days": days,
+        "contacted": [{"phone_key": k, "last_sent_at": v.isoformat()} for k, v in sorted(latest.items(), key=lambda kv: kv[1], reverse=True)],
+    }
+
+
 @router.get("/send-mode")
 def send_mode(
     phone: str = Query(..., description="The shop's phone number"),
