@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { formatTimeIST } from '../../utils/time';
 import {
   X,
   Send,
@@ -503,10 +504,7 @@ https://easybillbro.com/`,
                         }`}
                       >
                         <span>
-                          {new Date(msg.created_at || Date.now()).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {formatTimeIST(msg.created_at || new Date())}
                         </span>
                         {!isShopOwner && (msg.status === 'failed' || msg.status === 'simulated'
                           ? <span className="font-bold" title={msg.status === 'simulated' ? 'Test mode: this message was NOT sent to WhatsApp' : 'This message could not be sent'}>

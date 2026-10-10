@@ -10,6 +10,7 @@ import {
   Sun,
   LogOut,
   ChevronDown,
+  Zap,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
@@ -18,8 +19,11 @@ import { useAuthStore } from '../../store/authStore';
  * Goal: a new user understands every item at a glance, so there are few links
  * with plain names, a clearly marked current page and one account menu.
  * On phones the same links live in the bottom bar (MobileBottomNav).
+ *
+ * quickAction ({ label, onClick }) adds one highlighted button next to the links.
+ * Only the results page passes it, so "Quick Select" appears there and nowhere else.
  */
-export default function Navbar() {
+export default function Navbar({ quickAction = null }) {
   const { user, isAuthenticated, logout } = useAuthStore();
   const navigate = useNavigate();
   const [accountOpen, setAccountOpen] = useState(false);
@@ -85,11 +89,23 @@ export default function Navbar() {
                 {label}
               </NavLink>
             ))}
+            {quickAction && (
+              <button type="button" onClick={quickAction.onClick} className="ui-nav-link ui-nav-quick">
+                <Zap className="h-4 w-4" aria-hidden="true" />
+                {quickAction.label}
+              </button>
+            )}
           </nav>
         )}
 
         {/* Right side */}
         <div className="flex items-center gap-2">
+          {isAuthenticated && quickAction && (
+            <button type="button" onClick={quickAction.onClick} className="ui-nav-link ui-nav-quick md:hidden">
+              <Zap className="h-4 w-4" aria-hidden="true" />
+              {quickAction.label}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}

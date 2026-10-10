@@ -30,6 +30,7 @@ import {
   Armchair,
   Dog,
   Building2,
+  Ruler,
 } from 'lucide-react';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
@@ -67,15 +68,14 @@ const CATEGORIES = [
   { value: 'Shopping Mall', label: 'Shopping Mall', icon: Building2, color: '#3b82f6' },
 ];
 
-const QUICK_TOWNS = [
-  { name: 'Rajampet', lat: 14.1936, lng: 79.1586, full: 'Rajampet, Annamayya District, Andhra Pradesh, India' },
-  { name: 'Railway Kodur', lat: 13.9574, lng: 79.3488, full: 'Railway Kodur, Annamayya District, Andhra Pradesh, India' },
-  { name: 'Tirupati', lat: 13.6288, lng: 79.4192, full: 'Tirupati, Andhra Pradesh, India' },
-  { name: 'Kadapa', lat: 14.4673, lng: 78.8242, full: 'Kadapa, YSR District, Andhra Pradesh, India' },
-  { name: 'Puttur', lat: 13.4381, lng: 79.5522, full: 'Puttur, Tirupati / Chittoor, Andhra Pradesh, India' },
-  { name: 'Hyderabad', lat: 17.3850, lng: 78.4867, full: 'Hyderabad, Telangana, India' },
-  { name: 'Bangalore', lat: 12.9716, lng: 77.5946, full: 'Bangalore, Karnataka, India' },
-];
+function SectionHead({ icon: Icon, title }) {
+  return (
+    <div className="finder-sec-head">
+      <span className="finder-sec-icon"><Icon aria-hidden="true" /></span>
+      <h2>{title}</h2>
+    </div>
+  );
+}
 
 const PRESET_DISTANCES = [0.5, 1, 2, 5, 10, 20, 30, 50];
 
@@ -228,26 +228,31 @@ export default function UserDashboard() {
       <Navbar />
 
       <main className="flex-1">
-        <div className="ui-page">
-          <header className="ui-page-header">
-            <h1 className="ui-h1">Find shops near you</h1>
-            <p className="ui-lead">
-              Choose a place, how far to look and what kind of shop. We will show you which shops
-              have a website and which do not.
+        <section className="finder-hero">
+          <div className="finder-hero-inner">
+            <h1>Find shops near you</h1>
+            <p>
+              Pick a place, a distance and a shop type. We show which nearby shops already have a
+              website and which do not, so you know exactly who to reach out to.
             </p>
-          </header>
+          </div>
+        </section>
 
-          <form onSubmit={handleSearchSubmit} className="ui-card ui-card-pad" aria-label="Find shops">
-            {/* Step 1: where */}
-            <section className="flex gap-4">
-              <div className="flex-1 min-w-0">
-                <h2 className="sr-only">Where do you want to look?</h2>
+        <div className="ui-page finder-body">
 
+          <form
+            onSubmit={handleSearchSubmit}
+            aria-label="Find shops"
+            className="ui-card finder-card"
+          >
+            <div className="finder-card-body">
+              <section className="ui-form-section">
+                <SectionHead icon={MapPin} title="Location" />
                 <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex-1 min-w-0">
                     <GooglePlacesAutocomplete
                       forceValue={forceInputValue}
-                      placeholder="e.g. HITEC City, Hyderabad"
+                      placeholder="Search a town, area or landmark"
                       onPlaceSelect={handlePlaceSelect}
                       onTyping={handleTyping}
                       onClear={handleClearLocation}
@@ -263,72 +268,31 @@ export default function UserDashboard() {
                     {isDetectingLocation ? 'Finding…' : 'Use my location'}
                   </button>
                 </div>
-
-                {!isTyping && hasLocation && (
-                  <p className="mt-3 flex items-center gap-2 text-sm" style={{ color: 'var(--ui-success)' }}>
-                    <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 truncate">
-                      Searching around <strong>{searchCenter.name || 'your current location'}</strong>
-                    </span>
-                  </p>
-                )}
                 {locationStatus && (
                   <div className="ui-notice ui-notice-info mt-3" role="status">
                     <Navigation className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
                     <span>{locationStatus}</span>
                   </div>
                 )}
+              </section>
 
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className="ui-help mr-1">Popular towns:</span>
-                  {QUICK_TOWNS.map((t) => {
-                    const isCurrent = searchCenter?.name?.toLowerCase().includes(t.name.toLowerCase());
-                    return (
+              <section className="ui-form-section">
+                <SectionHead icon={Ruler} title="Search radius" />
+                <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Search distance">
+                  <div className="ui-seg">
+                    {PRESET_DISTANCES.map((d) => (
                       <button
-                        key={t.name}
+                        key={d}
                         type="button"
-                        className={`ui-chip ${isCurrent ? 'ui-chip-active' : ''}`}
-                        aria-pressed={!!isCurrent}
-                        onClick={() => {
-                          handlePlaceSelect({
-                            latitude: t.lat,
-                            longitude: t.lng,
-                            name: t.name,
-                            formattedAddress: t.full,
-                            shortAddress: t.name,
-                            placeId: `town_${t.name.toLowerCase().replace(/\s+/g, '_')}`,
-                          });
-                          setForceInputValue(t.name);
-                        }}
+                        aria-pressed={Number(radiusKm) === d}
+                        onClick={() => { setRadius(d); setCustomRadiusInput(''); }}
                       >
-                        {t.name}
+                        {d < 1 ? `${d * 1000} m` : `${d} km`}
                       </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
-
-            <hr className="my-6" style={{ borderColor: 'var(--ui-border)' }} />
-
-            {/* Step 2: how far */}
-            <section className="flex gap-4">
-              <div className="flex-1 min-w-0">
-                <h2 className="sr-only">How far?</h2>
-                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Search distance">
-                  {PRESET_DISTANCES.map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      className={`ui-chip ${Number(radiusKm) === d ? 'ui-chip-active' : ''}`}
-                      aria-pressed={Number(radiusKm) === d}
-                      onClick={() => { setRadius(d); setCustomRadiusInput(''); }}
-                    >
-                      {d < 1 ? `${d * 1000} m` : `${d} km`}
-                    </button>
-                  ))}
-                  <label className="flex items-center gap-2 ml-1">
-                    <span className="ui-help">Other:</span>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <span className="ui-help">Other</span>
                     <input
                       type="number"
                       min="0.1"
@@ -346,17 +310,13 @@ export default function UserDashboard() {
                     />
                   </label>
                 </div>
-              </div>
-            </section>
+              </section>
 
-            <hr className="my-6" style={{ borderColor: 'var(--ui-border)' }} />
-
-            {/* Step 3: what kind */}
-            <section className="flex gap-4">
-              <div className="flex-1 min-w-0">
-                <h2 className="sr-only">What kind of shop?</h2>
-
-                <div className="flex flex-wrap gap-2" role="group" aria-label="Shop type">
+              <section className="ui-form-section">
+                <div className="finder-type-head">
+                  <SectionHead icon={Store} title="Shop type" />
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" role="group" aria-label="Shop type">
                   {visibleCategories.map((c) => {
                     const Icon = c.icon;
                     const active = (category || '') === c.value;
@@ -364,75 +324,107 @@ export default function UserDashboard() {
                       <button
                         key={c.value || 'all'}
                         type="button"
-                        className={`ui-chip ${active ? 'ui-chip-active' : ''}`}
+                        className="ui-tile"
                         aria-pressed={active}
                         onClick={() => handleCategorySelect(c)}
                       >
-                        <Icon className="h-4 w-4" aria-hidden="true" />
-                        {c.label}
+                        <span className="ui-tile-icon" style={{ background: `${c.color || '#6366f1'}1f`, color: c.color || '#6366f1' }}>
+                          <Icon className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 leading-tight">{c.label}</span>
                       </button>
                     );
                   })}
-                  <button
-                    type="button"
-                    className="ui-btn ui-btn-ghost ui-btn-sm"
-                    onClick={() => setShowAllCategories(!showAllCategories)}
-                  >
-                    {showAllCategories ? 'Show fewer' : `Show all ${CATEGORIES.length} types`}
-                    <ChevronDown className={`h-4 w-4 transition-transform ${showAllCategories ? 'rotate-180' : ''}`} aria-hidden="true" />
-                  </button>
                 </div>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn-ghost ui-btn-sm mt-2"
+                  onClick={() => setShowAllCategories(!showAllCategories)}
+                >
+                  {showAllCategories ? 'Show fewer types' : `Show all ${CATEGORIES.length} types`}
+                  <ChevronDown className={`h-4 w-4 transition-transform ${showAllCategories ? 'rotate-180' : ''}`} aria-hidden="true" />
+                </button>
 
-                <div className="mt-4">
-                  <label htmlFor="shop-keyword" className="ui-label">Or search by name or item <span className="ui-muted font-normal">(optional)</span></label>
-                  <div className="relative">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--ui-muted)' }} aria-hidden="true" />
-                    <input
-                      id="shop-keyword"
-                      type="text"
-                      value={keyword}
-                      onChange={(e) => setKeyword(e.target.value)}
-                      placeholder="e.g. biryani, cake, medicine"
-                      className="ui-input"
-                      style={{ paddingLeft: 40 }}
-                      autoComplete="off"
-                    />
+                  <div className="finder-keyword finder-keyword-wide">
+                    <label htmlFor="shop-keyword" className="sr-only">Search by shop name or item</label>
+                    <div className="relative">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--ui-muted)' }} aria-hidden="true" />
+                      <input
+                        id="shop-keyword"
+                        type="text"
+                        value={keyword}
+                        onChange={(e) => setKeyword(e.target.value)}
+                        placeholder="Or search a shop name or item"
+                        className="ui-input"
+                        style={{ paddingLeft: 40 }}
+                        autoComplete="off"
+                      />
+                    </div>
                   </div>
+
+                <div>
                   {matchingKeywordCategories.length > 0 && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="ui-help">Did you mean:</span>
-                      {matchingKeywordCategories.map((c) => (
-                        <button
-                          key={c.value}
-                          type="button"
-                          className="ui-chip"
-                          onClick={() => { handleCategorySelect(c); setKeyword(''); }}
-                        >
-                          {c.label}
-                        </button>
-                      ))}
+                    <div className="finder-suggest" role="group" aria-label="Suggested shop types">
+                      <p className="finder-suggest-title">
+                        <Sparkles className="h-4 w-4" aria-hidden="true" />
+                        Suggested shop types for <strong>&ldquo;{keyword.trim()}&rdquo;</strong>
+                      </p>
+                      <div className="finder-suggest-list">
+                        {matchingKeywordCategories.map((c) => {
+                          const Icon = c.icon;
+                          return (
+                            <button
+                              key={c.value}
+                              type="button"
+                              className="finder-suggest-item"
+                              onClick={() => { handleCategorySelect(c); setKeyword(''); }}
+                            >
+                              <span className="finder-suggest-icon" style={{ background: `${c.color || '#6366f1'}1f`, color: c.color || '#6366f1' }}>
+                                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                              </span>
+                              {c.label}
+                              <ArrowRight className="h-3.5 w-3.5 finder-suggest-arrow" aria-hidden="true" />
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-            </section>
+              </section>
+            </div>
 
-            {error && (
-              <div className="ui-notice ui-notice-error mt-6" role="alert">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
-                <span>{typeof error === 'string' ? error : 'Something went wrong. Please try again.'}</span>
-              </div>
-            )}
-
-            <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
-              <p className="ui-help">
-                {hasLocation
-                  ? <>Looking for <strong>{currentCategoryLabel.toLowerCase()}</strong> within <strong>{kmLabel}</strong> of <strong>{placeName}</strong>.</>
-                  : 'Choose a place first (step 1).'}
-              </p>
-              <button type="submit" disabled={loading || !hasLocation} className="ui-btn ui-btn-primary ui-btn-lg">
+            <div className="finder-actionbar">
+              {error && (
+                <div className="ui-notice ui-notice-error w-full" role="alert">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>{typeof error === 'string' ? error : 'Something went wrong. Please try again.'}</span>
+                </div>
+              )}
+              <dl className="finder-summary" aria-label="Your search">
+                <div className={hasLocation ? '' : 'is-empty'}>
+                  <dt><MapPin aria-hidden="true" />Place</dt>
+                  <dd>{hasLocation ? (searchCenter.name || 'Your current location') : 'Not chosen yet'}</dd>
+                </div>
+                <div>
+                  <dt><Ruler aria-hidden="true" />Radius</dt>
+                  <dd>{kmLabel}</dd>
+                </div>
+                <div>
+                  <dt><Store aria-hidden="true" />Shop type</dt>
+                  <dd>{currentCategoryLabel}</dd>
+                </div>
+                {keyword?.trim() && (
+                  <div>
+                    <dt><Search aria-hidden="true" />Keyword</dt>
+                    <dd>{keyword.trim()}</dd>
+                  </div>
+                )}
+              </dl>
+              <button type="submit" disabled={loading || !hasLocation} className="ui-btn ui-btn-primary ui-btn-lg finder-go">
                 <Search className="h-5 w-5" aria-hidden="true" />
                 {loading ? 'Searching…' : 'Show shops'}
+                {!loading && <ArrowRight className="h-5 w-5" aria-hidden="true" />}
               </button>
             </div>
           </form>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FileCode2, CheckCircle2, Clock, XCircle, MessageSquare } from 'lucide-react';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import api from '../../services/api';
+import { formatDateIST } from '../../utils/time';
 
 export default function AdminWebsiteRequests() {
   const [requests, setRequests] = useState([]);
@@ -107,7 +108,7 @@ export default function AdminWebsiteRequests() {
                     <td className="p-4 text-slate-400">User #{r.user_id}</td>
                     <td className="p-4">{getStatusBadge(r.status)}</td>
                     <td className="p-4 max-w-xs truncate text-slate-400">{r.message || '—'}</td>
-                    <td className="p-4 text-slate-500">{new Date(r.created_at).toLocaleDateString()}</td>
+                    <td className="p-4 text-slate-500">{formatDateIST(r.created_at)}</td>
                     <td className="p-4 text-right">
                       <button
                         onClick={() => {

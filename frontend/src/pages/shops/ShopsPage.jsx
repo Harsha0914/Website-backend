@@ -8,7 +8,6 @@ import {
   Sparkles,
   MapPin,
   Sliders,
-  Layers,
   Map as MapIcon,
   List,
   Crosshair,
@@ -25,6 +24,7 @@ import {
   Star,
   ArrowUpDown,
   AlertCircle,
+  Ruler,
 } from 'lucide-react';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
@@ -101,7 +101,7 @@ const TAB_CONFIG = {
 
 export default function ShopsPage({ defaultTab = 'all' }) {
   const [activeTab, setActiveTab] = useState(defaultTab);
-  const [viewMode, setViewMode] = useState('split');
+  const [viewMode, setViewMode] = useState('list');
   const [showModifyModal, setShowModifyModal] = useState(false);
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
   const navigate = useNavigate();
@@ -335,38 +335,36 @@ export default function ShopsPage({ defaultTab = 'all' }) {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--ui-bg)' }}>
-      <Navbar />
+      <Navbar
+        quickAction={sendableShops.length > 0 ? { label: 'Quick Select', onClick: () => setShowBroadcastModal(true) } : null}
+      />
 
       <main className="flex-1">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-24 space-y-5">
-          {/* Header */}
-          <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+        <section className="finder-hero results-hero">
+          <div className="finder-hero-inner results-hero-row">
             <div className="min-w-0">
-              <h1 className="ui-h1">Shops near {locationName}</h1>
-              <p className="ui-lead" aria-live="polite">{statusLine}</p>
+              <h1>Shops near {locationName}</h1>
+              <p aria-live="polite">{statusLine}</p>
               {sourceLabel && !loading && (
-                <p className="ui-help mt-1">Shop details from: <strong>{sourceLabel}</strong></p>
+                <span className="results-source"><MapPin className="h-3.5 w-3.5" aria-hidden="true" />Shop details from {sourceLabel}</span>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => setShowModifyModal(true)} className="ui-btn ui-btn-secondary">
+            <div className="results-actions">
+              <button type="button" onClick={() => setShowModifyModal(true)} className="results-btn results-btn-ghost">
                 <Sliders className="h-4 w-4" aria-hidden="true" />
                 Change search
               </button>
-              {sendableShops.length > 0 && (
-                <button type="button" onClick={() => setShowBroadcastModal(true)} className="ui-btn ui-btn-success">
-                  <MessageCircle className="h-4 w-4" aria-hidden="true" />
-                  Send to several shops
-                </button>
-              )}
             </div>
-          </header>
+          </div>
+        </section>
 
-          {/* Website status tabs */}
-          <div role="tablist" aria-label="Website status" className="flex flex-wrap gap-2">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 results-body pb-24 space-y-5">
+          {/* Website status: one card per group, click to filter */}
+          <div role="tablist" aria-label="Website status" className="results-stats">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
+              const cfg = TAB_CONFIG[tab.id] || TAB_CONFIG.all;
               return (
                 <button
                   key={tab.id}
@@ -374,43 +372,25 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   role="tab"
                   aria-selected={isActive}
                   onClick={() => { setActiveTab(tab.id); navigate(tab.path); }}
-                  className={`ui-chip ${isActive ? 'ui-chip-active' : ''}`}
+                  className="results-stat"
+                  style={{ '--stat-color': cfg.color }}
                 >
-                  <Icon className="h-4 w-4" aria-hidden="true" />
-                  {tab.label}
-                  <span className="ui-badge ui-badge-neutral" style={{ padding: '1px 8px' }}>{tab.count}</span>
+                  <span className="results-stat-icon" style={{ background: `${cfg.color}1f`, color: cfg.color }}>
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="results-stat-num">{tab.count}</span>
+                    <span className="results-stat-label">{tab.label}</span>
+                  </span>
                 </button>
               );
             })}
           </div>
 
-          {/* Phone split: shops we can message vs. shops with no number listed */}
-          {activeTab === 'no-websites' && (
-            <div role="group" aria-label="Phone number" className="flex flex-wrap items-center gap-2">
-              <span className="ui-help" style={{ marginRight: 4 }}>Phone number:</span>
-              {[
-                { id: 'all', label: 'All shops', count: phoneCounts.all },
-                { id: 'with', label: 'With phone number', count: phoneCounts.with },
-                { id: 'without', label: 'No phone number', count: phoneCounts.without },
-              ].map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  aria-pressed={phoneFilter === f.id}
-                  onClick={() => setPhoneFilter(f.id)}
-                  className={`ui-chip ${phoneFilter === f.id ? 'ui-chip-active' : ''}`}
-                >
-                  {f.label}
-                  <span className="ui-badge ui-badge-neutral" style={{ padding: '1px 8px' }}>{f.count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* Filters */}
-          <section className="ui-card ui-card-pad space-y-4" aria-label="Filters">
+          <section className="ui-card ui-card-pad space-y-4 results-filters" aria-label="Filters">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-              <div className="relative md:col-span-5">
+              <div className="relative md:col-span-3">
                 <label htmlFor="shop-filter-keyword" className="sr-only">Search by name or item</label>
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--ui-muted)' }} aria-hidden="true" />
                 <input
@@ -418,7 +398,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   type="text"
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
-                  placeholder="Filter by name or item, e.g. biryani"
+                  placeholder="Search name or item"
                   className="ui-input"
                   style={{ paddingLeft: 40 }}
                   autoComplete="off"
@@ -436,6 +416,19 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                 )}
               </div>
               <div className="md:col-span-3">
+                <label htmlFor="shop-filter-phone" className="sr-only">Phone number</label>
+                <select
+                  id="shop-filter-phone"
+                  value={phoneFilter}
+                  onChange={(e) => setPhoneFilter(e.target.value)}
+                  className="ui-select"
+                >
+                  <option value="all">All shops ({phoneCounts.all})</option>
+                  <option value="with">With phone number ({phoneCounts.with})</option>
+                  <option value="without">Without phone number ({phoneCounts.without})</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
                 <label htmlFor="shop-filter-rating" className="sr-only">Rating</label>
                 <select
                   id="shop-filter-rating"
@@ -459,9 +452,8 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   <option value="distance">Nearest first</option>
                 </select>
               </div>
-              <div className="md:col-span-2 flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--ui-border-strong)' }} role="group" aria-label="View">
+              <div className="md:col-span-2 ui-seg results-view" role="group" aria-label="View">
                 {[
-                  { id: 'split', icon: Layers, label: 'Both' },
                   { id: 'list', icon: List, label: 'List' },
                   { id: 'map', icon: MapIcon, label: 'Map' },
                 ].map(({ id, icon: Icon, label }) => (
@@ -470,8 +462,8 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                     type="button"
                     onClick={() => setViewMode(id)}
                     aria-pressed={viewMode === id}
-                    className={`flex-1 inline-flex items-center justify-center gap-1.5 text-sm font-semibold ${viewMode === id ? 'ui-chip-active' : ''}`}
-                    style={{ minHeight: 44, color: viewMode === id ? undefined : 'var(--ui-text-2)', background: viewMode === id ? undefined : 'var(--ui-surface)' }}
+                    title={label}
+                    className="inline-flex items-center justify-center gap-1.5"
                   >
                     <Icon className="h-4 w-4" aria-hidden="true" />
                     <span className="hidden xl:inline">{label}</span>
@@ -481,7 +473,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
             </div>
 
             {availableCategories.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Shop type">
+              <div className="results-types" role="group" aria-label="Shop type">
                 <button
                   type="button"
                   className={`ui-chip ${!category ? 'ui-chip-active' : ''}`}
@@ -608,33 +600,35 @@ export default function ShopsPage({ defaultTab = 'all' }) {
       {showModifyModal && (
         <div
           className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
-          style={{ background: 'rgba(15, 23, 42, 0.5)' }}
+          style={{ background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }}
           onClick={(e) => e.target === e.currentTarget && setShowModifyModal(false)}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="change-search-title"
-            className="ui-card w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-b-none sm:rounded-b-[14px]"
-            style={{ boxShadow: 'var(--ui-shadow-lg)' }}
+            className="ui-card qs-modal cs-modal w-full sm:max-w-xl flex flex-col"
+            style={{ maxHeight: '94vh' }}
           >
-            <div className="flex items-center justify-between p-5 border-b" style={{ borderColor: 'var(--ui-border)' }}>
-              <div>
-                <h2 id="change-search-title" className="ui-h2">Change search</h2>
-                <p className="ui-help">Update the place, distance or type of shop.</p>
+            <div className="qs-head">
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <h2 id="change-search-title" className="qs-title">Change search</h2>
+                  <p className="qs-sub">Update the place, distance or type of shop, then show the shops again.</p>
+                </div>
+                <button type="button" className="qs-head-btn" onClick={() => setShowModifyModal(false)} aria-label="Close">
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
               </div>
-              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" style={{ width: 40, padding: 0 }} onClick={() => setShowModifyModal(false)} aria-label="Close">
-                <X className="h-5 w-5" />
-              </button>
             </div>
 
-            <div className="p-5 space-y-6">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="ui-label !mb-0">Place</span>
+            <div className="cs-body">
+              <section className="cs-section">
+                <div className="cs-sec-head">
+                  <span className="cs-sec-title"><MapPin className="h-4 w-4" aria-hidden="true" />Place</span>
                   <button
                     type="button"
-                    className="ui-btn ui-btn-ghost ui-btn-sm"
+                    className="cs-link"
                     disabled={isDetectingLocation}
                     onClick={async () => {
                       try {
@@ -654,7 +648,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                     }}
                   >
                     <Crosshair className="h-4 w-4" aria-hidden="true" />
-                    Use my location
+                    {isDetectingLocation ? 'Finding…' : 'Use my location'}
                   </button>
                 </div>
                 <GooglePlacesAutocomplete
@@ -663,41 +657,18 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   placeholder="Search a place, e.g. Chennai"
                   onPlaceSelect={(details) => setTempSearchCenter(details)}
                 />
-                <div className="mt-3 flex flex-wrap gap-2 max-h-28 overflow-y-auto">
-                  {QUICK_PLACES.map((city) => {
-                    const isSelected = tempSearchCenter?.name?.toLowerCase()?.includes(city.name.toLowerCase());
-                    return (
-                      <button
-                        key={city.name}
-                        type="button"
-                        className={`ui-chip ${isSelected ? 'ui-chip-active' : ''}`}
-                        aria-pressed={!!isSelected}
-                        onClick={() => {
-                          setTempSearchCenter({
-                            type: 'place',
-                            latitude: city.lat,
-                            longitude: city.lng,
-                            name: city.name,
-                            formattedAddress: `${city.name}, India`,
-                          });
-                          setModalKey((k) => k + 1);
-                        }}
-                      >
-                        {city.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              </section>
 
-              <div>
-                <span className="ui-label">How far? <span className="ui-muted font-normal">({tempRadius} km)</span></span>
-                <div className="flex flex-wrap gap-2" role="group" aria-label="Distance">
+              <section className="cs-section">
+                <div className="cs-sec-head">
+                  <span className="cs-sec-title"><Ruler className="h-4 w-4" aria-hidden="true" />How far?</span>
+                  <span className="cs-value">{tempRadius < 1 ? `${tempRadius * 1000} m` : `${tempRadius} km`}</span>
+                </div>
+                <div className="cs-radius" role="group" aria-label="Distance">
                   {PRESET_DISTANCES.map((d) => (
                     <button
                       key={d}
                       type="button"
-                      className={`ui-chip ${tempRadius === d ? 'ui-chip-active' : ''}`}
                       aria-pressed={tempRadius === d}
                       onClick={() => setTempRadius(d)}
                     >
@@ -705,17 +676,21 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
 
-              <div>
-                <label htmlFor="modal-category" className="ui-label">Type of shop</label>
+              <section className="cs-section">
+                <div className="cs-sec-head">
+                  <label htmlFor="modal-category" className="cs-sec-title"><Store className="h-4 w-4" aria-hidden="true" />Type of shop</label>
+                </div>
                 <select id="modal-category" value={tempCategory} onChange={(e) => setTempCategory(e.target.value)} className="ui-select">
                   {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-              </div>
+              </section>
 
-              <div>
-                <label htmlFor="modal-keyword" className="ui-label">Name or item <span className="ui-muted font-normal">(optional)</span></label>
+              <section className="cs-section">
+                <div className="cs-sec-head">
+                  <label htmlFor="modal-keyword" className="cs-sec-title"><Search className="h-4 w-4" aria-hidden="true" />Name or item <span className="ui-muted font-normal normal-case">(optional)</span></label>
+                </div>
                 <input
                   id="modal-keyword"
                   type="text"
@@ -724,12 +699,12 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   placeholder="e.g. organic, tailor, medical"
                   className="ui-input"
                 />
-              </div>
+              </section>
             </div>
 
-            <div className="flex gap-3 justify-end p-5 border-t" style={{ borderColor: 'var(--ui-border)' }}>
+            <div className="qs-foot">
               <button type="button" className="ui-btn ui-btn-secondary" onClick={() => setShowModifyModal(false)}>Cancel</button>
-              <button type="button" className="ui-btn ui-btn-primary" onClick={handleApplyModify}>
+              <button type="button" className="ui-btn ui-btn-primary qs-next" onClick={handleApplyModify}>
                 <Search className="h-4 w-4" aria-hidden="true" />
                 Show shops
               </button>

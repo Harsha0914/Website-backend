@@ -31,7 +31,6 @@ import { useEffect } from 'react';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
 import api from './services/api';
-import WhatsAppSentConfirmToast from './components/common/WhatsAppSentConfirmToast';
 
 /**
  * Root entry point handler:
@@ -165,7 +164,6 @@ export default function App() {
       {/* Fallback Route */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    <WhatsAppSentConfirmToast />
   </>
   );
 }

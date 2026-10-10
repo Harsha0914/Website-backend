@@ -91,6 +91,7 @@ export function GooglePlacesAutocomplete({
 
   const containerRef = useRef(null);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
   const debounceTimer = useRef(null);
   const requestIdRef = useRef(0);
 
@@ -348,6 +349,26 @@ export function GooglePlacesAutocomplete({
     }
   };
 
+  // Keep the row chosen with the arrow keys inside the visible part of the list.
+  useEffect(() => {
+    if (highlightIndex < 0) return;
+    listRef.current?.querySelector(`[data-index="${highlightIndex}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [highlightIndex]);
+
+  // Show the part of the name that matches what was typed in the accent colour.
+  const markMatch = (text) => {
+    const q = inputValue.trim().toLowerCase();
+    const at = q ? (text || '').toLowerCase().indexOf(q) : -1;
+    if (at < 0) return text;
+    return (
+      <>
+        {text.slice(0, at)}
+        <span className="text-blue-600 dark:text-blue-400">{text.slice(at, at + q.length)}</span>
+        {text.slice(at + q.length)}
+      </>
+    );
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -419,7 +440,7 @@ export function GooglePlacesAutocomplete({
           onKeyDown={handleKeyDown}
           placeholder={isResolvingPlace ? 'Getting location details…' : placeholder}
           disabled={isResolvingPlace}
-          className={`w-full pl-10 pr-10 py-3 text-sm bg-white dark:bg-slate-950 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-xs text-slate-900 dark:text-white transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 disabled:opacity-60 ${
+          className={`w-full pl-10 pr-10 py-3 text-sm bg-white dark:bg-slate-950 border rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 shadow-xs text-slate-900 dark:text-white transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 disabled:opacity-60 ${
             resolveError
               ? 'border-rose-400 dark:border-rose-700'
               : 'border-slate-200 dark:border-slate-800'
@@ -444,11 +465,8 @@ export function GooglePlacesAutocomplete({
       )}
 
       {showDropdown && !isResolvingPlace && inputValue.trim().length > 0 && (
-        <ul
-          role="listbox"
-          className="absolute z-[99999] left-0 right-0 top-full mt-2 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.25)] overflow-y-auto py-1.5"
-          style={{ maxHeight: 380 }}
-        >
+        <div className="absolute z-[99999] left-0 right-0 top-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-[0_12px_32px_rgba(15,23,42,0.16)] overflow-hidden">
+        <ul ref={listRef} role="listbox" aria-label="Place suggestions" className="overflow-y-auto p-1.5" style={{ maxHeight: 320 }}>
           {isLoading && suggestions.length === 0 ? (
             <li className="px-4 py-3.5 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2.5 font-medium">
               <Loader className="w-4 h-4 text-blue-500 animate-spin" />
@@ -475,6 +493,7 @@ export function GooglePlacesAutocomplete({
               return (
                 <li
                   key={s.place_id || i}
+                  data-index={i}
                   role="option"
                   aria-selected={isHighlighted}
                   onMouseDown={(e) => {
@@ -482,27 +501,23 @@ export function GooglePlacesAutocomplete({
                     handleSelectSuggestion(s);
                   }}
                   onMouseEnter={() => setHighlightIndex(i)}
-                  className={`px-4 py-3 flex items-start gap-3 cursor-pointer transition-colors border-b border-slate-100/60 dark:border-slate-800/60 last:border-none ${
+                  className={`px-3 py-2.5 flex items-center gap-3 cursor-pointer rounded-lg transition-colors ${
                     isHighlighted
-                      ? 'bg-blue-50/90 dark:bg-blue-950/70'
-                      : 'hover:bg-slate-50/90 dark:hover:bg-slate-800/80'
+                      ? 'bg-blue-50 dark:bg-blue-950/70'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/80'
                   }`}
                 >
-                  <div className="mt-0.5 shrink-0 p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
-                    <MapPin className="w-3.5 h-3.5" />
+                  <div className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${isHighlighted ? 'bg-white dark:bg-slate-900' : 'bg-slate-100 dark:bg-slate-800'} text-slate-500 dark:text-slate-400`}>
+                    <MapPin className="w-4 h-4" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div
-                      className={`text-sm font-bold leading-tight ${
-                        isHighlighted
-                          ? 'text-blue-900 dark:text-blue-200'
-                          : 'text-slate-900 dark:text-slate-100'
-                      }`}
+                      className="text-sm font-semibold leading-tight text-slate-900 dark:text-slate-100 truncate"
                     >
-                      {primary}
+                      {markMatch(primary)}
                     </div>
                     {secondary && (
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-normal line-clamp-1">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-normal truncate">
                         {secondary}
                       </div>
                     )}
@@ -512,6 +527,13 @@ export function GooglePlacesAutocomplete({
             })
           )}
         </ul>
+        {suggestions.length > 0 && (
+          <div className="hidden sm:flex items-center justify-between gap-3 px-4 py-2 text-[11px] text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40">
+            <span>↑ ↓ to move · Enter to choose · Esc to close</span>
+            <span>Powered by Google</span>
+          </div>
+        )}
+        </div>
       )}
     </div>
   );

@@ -9,12 +9,12 @@ const STEPS = [
 ];
 
 const FEATURES = [
-  { icon: MapPin, title: 'Live Google Maps shops', text: 'Shop names, addresses, phone numbers and ratings come straight from Google Maps.' },
-  { icon: Globe, title: 'Website check', text: 'See at a glance if a shop has a website and how good it is.' },
-  { icon: Users, title: 'Send to many, one by one', text: 'Pick 10, 20 or any number of shops and watch each message go out with its own status.' },
-  { icon: MessageCircle, title: 'All chats in one place', text: 'Every message you send and every reply you get, in a single clean inbox.' },
-  { icon: Smartphone, title: 'Works on your phone', text: 'Large buttons and clear text, so it is easy to use anywhere.' },
-  { icon: ShieldCheck, title: 'Private to your team', text: 'Only people with an account can see the shops and the chats.' },
+  { icon: MapPin, tone: '#6366f1', title: 'Live Google Maps shops', text: 'Shop names, addresses, phone numbers and ratings come straight from Google Maps.' },
+  { icon: Globe, tone: '#10b981', title: 'Website check', text: 'See at a glance if a shop has a website and how good it is.' },
+  { icon: Users, tone: '#f59e0b', title: 'Send to many, one by one', text: 'Pick 10, 20 or any number of shops and watch each message go out with its own status.' },
+  { icon: MessageCircle, tone: '#0ea5e9', title: 'All chats in one place', text: 'Every message you send and every reply you get, in a single clean inbox.' },
+  { icon: Smartphone, tone: '#ec4899', title: 'Works on your phone', text: 'Large buttons and clear text, so it is easy to use anywhere.' },
+  { icon: ShieldCheck, tone: '#8b5cf6', title: 'Private to your team', text: 'Only people with an account can see the shops and the chats.' },
 ];
 
 export default function LandingPage() {
@@ -28,56 +28,52 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--ui-bg)' }}>
       {/* Top bar */}
-      <header className="border-b" style={{ background: 'var(--ui-surface)', borderColor: 'var(--ui-border)' }}>
+      <header className="lp-top">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           <Link to="/" className="inline-flex items-center gap-2.5" aria-label="Website Presence home">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: 'var(--ui-primary)', color: 'var(--ui-surface)' }}>
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: '#fff', color: '#4338ca' }}>
               <Store className="h-5 w-5" aria-hidden="true" />
             </span>
-            <span className="text-lg font-bold tracking-tight" style={{ color: 'var(--ui-text)' }}>Website Presence</span>
+            <span className="text-lg font-bold tracking-tight text-white">Website Presence</span>
           </Link>
           <nav className="flex items-center gap-2" aria-label="Account">
-            <Link to="/login" className="ui-btn ui-btn-secondary ui-btn-sm">Sign in</Link>
-            <Link to="/register" className="ui-btn ui-btn-primary ui-btn-sm hidden sm:inline-flex">Create account</Link>
+            <Link to="/login" className="lp-btn lp-btn-ghost">Sign in</Link>
+            <Link to="/register" className="lp-btn lp-btn-solid hidden sm:inline-flex">Create account</Link>
           </nav>
         </div>
       </header>
 
       <main className="flex-1">
         {/* Hero */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-12 sm:pt-20 pb-12 sm:pb-16 text-center">
-          <span className="ui-badge ui-badge-info">For Lexon IT outreach</span>
-          <h1 className="mt-5 mx-auto font-extrabold tracking-tight" style={{ color: 'var(--ui-text)', fontSize: 'clamp(2rem, 6vw, 3.4rem)', lineHeight: 1.1, maxWidth: 820 }}>
-            Find local shops that need a website, and message them in minutes
-          </h1>
-          <p className="ui-lead mx-auto mt-5" style={{ maxWidth: 640, fontSize: '1.1rem' }}>
-            Search any area, see which shops have no website, and send them a WhatsApp message. No technical skills needed.
-          </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link to="/login" className="ui-btn ui-btn-primary ui-btn-lg">
-              Sign in to start
-              <ArrowRight className="h-5 w-5" aria-hidden="true" />
-            </Link>
-            <Link to="/register" className="ui-btn ui-btn-secondary ui-btn-lg">Create an account</Link>
+        <section className="lp-hero">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lp-hero-grid">
+            <div>
+              <h1>Find local shops that need a website, and message them in minutes</h1>
+              <p>Search any area, see which shops have no website, and send them a WhatsApp message. No technical skills needed.</p>
+              <div className="lp-cta">
+                <Link to="/login" className="lp-btn lp-btn-solid lp-btn-lg">
+                  Sign in to start
+                  <ArrowRight className="h-5 w-5" aria-hidden="true" />
+                </Link>
+                <Link to="/register" className="lp-btn lp-btn-ghost lp-btn-lg">Create an account</Link>
+              </div>
+            </div>
           </div>
         </section>
 
         {/* How it works */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-14" aria-labelledby="how-title">
-          <h2 id="how-title" className="ui-h2 text-center">How it works</h2>
-          <ol className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4" role="list">
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16" aria-labelledby="how-title">
+          <p className="lp-eyebrow">Simple</p>
+          <h2 id="how-title" className="lp-h2">How it works</h2>
+          <ol className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-5" role="list">
             {STEPS.map((s, i) => {
               const Icon = s.icon;
               return (
-                <li key={s.title} className="ui-card ui-card-pad">
-                  <div className="flex items-center gap-3">
-                    <span className="ui-step" aria-hidden="true">{i + 1}</span>
-                    <span className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--ui-primary-soft)', color: 'var(--ui-primary-text)' }} aria-hidden="true">
-                      <Icon className="h-5 w-5" />
-                    </span>
-                  </div>
-                  <h3 className="mt-4 font-bold text-lg" style={{ color: 'var(--ui-text)' }}>{s.title}</h3>
-                  <p className="mt-1.5" style={{ color: 'var(--ui-text-2)', lineHeight: 1.55 }}>{s.text}</p>
+                <li key={s.title} className="lp-step">
+                  <span className="lp-step-num" aria-hidden="true">{i + 1}</span>
+                  <span className="lp-step-icon" aria-hidden="true"><Icon className="h-6 w-6" /></span>
+                  <h3>{s.title}</h3>
+                  <p>{s.text}</p>
                 </li>
               );
             })}
@@ -85,21 +81,20 @@ export default function LandingPage() {
         </section>
 
         {/* Features */}
-        <section className="border-y" style={{ background: 'var(--ui-surface)', borderColor: 'var(--ui-border)' }} aria-labelledby="features-title">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
-            <h2 id="features-title" className="ui-h2 text-center">Everything in one place</h2>
-            <ul className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-7" role="list">
+        <section className="lp-features" aria-labelledby="features-title">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+            <p className="lp-eyebrow">Features</p>
+            <h2 id="features-title" className="lp-h2">Everything in one place</h2>
+            <ul className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" role="list">
               {FEATURES.map((f) => {
                 const Icon = f.icon;
                 return (
-                  <li key={f.title} className="flex gap-3">
-                    <span className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center" style={{ background: 'var(--ui-success-soft)', color: 'var(--ui-success)' }} aria-hidden="true">
+                  <li key={f.title} className="lp-feature">
+                    <span className="lp-feature-icon" style={{ background: `${f.tone}1f`, color: f.tone }} aria-hidden="true">
                       <Icon className="h-5 w-5" />
                     </span>
-                    <div>
-                      <h3 className="font-semibold" style={{ color: 'var(--ui-text)' }}>{f.title}</h3>
-                      <p className="mt-0.5 text-sm" style={{ color: 'var(--ui-text-2)', lineHeight: 1.55 }}>{f.text}</p>
-                    </div>
+                    <h3>{f.title}</h3>
+                    <p>{f.text}</p>
                   </li>
                 );
               })}
@@ -108,15 +103,17 @@ export default function LandingPage() {
         </section>
 
         {/* Final call to action */}
-        <section className="max-w-3xl mx-auto px-4 sm:px-6 py-14 text-center">
-          <h2 className="ui-h2">Ready to find your next customers?</h2>
-          <p className="ui-lead mx-auto mt-2">Sign in and your first search takes less than a minute.</p>
-          <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link to="/login" className="ui-btn ui-btn-primary ui-btn-lg">
-              Sign in
-              <ArrowRight className="h-5 w-5" aria-hidden="true" />
-            </Link>
-            <Link to="/register" className="ui-btn ui-btn-secondary ui-btn-lg">Create an account</Link>
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+          <div className="lp-final">
+            <h2>Ready to find your next customers?</h2>
+            <p>Sign in and your first search takes less than a minute.</p>
+            <div className="lp-cta" style={{ justifyContent: 'center' }}>
+              <Link to="/login" className="lp-btn lp-btn-solid lp-btn-lg">
+                Sign in
+                <ArrowRight className="h-5 w-5" aria-hidden="true" />
+              </Link>
+              <Link to="/register" className="lp-btn lp-btn-ghost lp-btn-lg">Create an account</Link>
+            </div>
           </div>
         </section>
       </main>
