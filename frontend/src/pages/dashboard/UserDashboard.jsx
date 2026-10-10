@@ -68,16 +68,6 @@ const CATEGORIES = [
   { value: 'Shopping Mall', label: 'Shopping Mall', icon: Building2, color: '#3b82f6' },
 ];
 
-const QUICK_TOWNS = [
-  { name: 'Rajampet', lat: 14.1936, lng: 79.1586, full: 'Rajampet, Annamayya District, Andhra Pradesh, India' },
-  { name: 'Railway Kodur', lat: 13.9574, lng: 79.3488, full: 'Railway Kodur, Annamayya District, Andhra Pradesh, India' },
-  { name: 'Tirupati', lat: 13.6288, lng: 79.4192, full: 'Tirupati, Andhra Pradesh, India' },
-  { name: 'Kadapa', lat: 14.4673, lng: 78.8242, full: 'Kadapa, YSR District, Andhra Pradesh, India' },
-  { name: 'Puttur', lat: 13.4381, lng: 79.5522, full: 'Puttur, Tirupati / Chittoor, Andhra Pradesh, India' },
-  { name: 'Hyderabad', lat: 17.3850, lng: 78.4867, full: 'Hyderabad, Telangana, India' },
-  { name: 'Bangalore', lat: 12.9716, lng: 77.5946, full: 'Bangalore, Karnataka, India' },
-];
-
 const PRESET_DISTANCES = [0.5, 1, 2, 5, 10, 20, 30, 50];
 
 // Browse lists: plain names that say what you will see.
@@ -278,34 +268,6 @@ export default function UserDashboard() {
                     <span>{locationStatus}</span>
                   </div>
                 )}
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className="ui-help mr-1">Popular towns:</span>
-                  {QUICK_TOWNS.map((t) => {
-                    const isCurrent = searchCenter?.name?.toLowerCase().includes(t.name.toLowerCase());
-                    return (
-                      <button
-                        key={t.name}
-                        type="button"
-                        className={`ui-chip ${isCurrent ? 'ui-chip-active' : ''}`}
-                        aria-pressed={!!isCurrent}
-                        onClick={() => {
-                          handlePlaceSelect({
-                            latitude: t.lat,
-                            longitude: t.lng,
-                            name: t.name,
-                            formattedAddress: t.full,
-                            shortAddress: t.name,
-                            placeId: `town_${t.name.toLowerCase().replace(/\s+/g, '_')}`,
-                          });
-                          setForceInputValue(t.name);
-                        }}
-                      >
-                        {t.name}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
             </section>
 
