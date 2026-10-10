@@ -243,3 +243,58 @@ def test_a_note_with_the_picture_link_is_added_to_the_mr_lad_thread(monkeypatch)
 
     monkeypatch.setattr(module.requests, "post", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     assert C.add_note("conv-1", "x") is False   # a failure never breaks sending
+
+
+# ─── the square version used for template headers (WhatsApp crops those to a square) ──
+def _real_jpeg(width, height):
+    from io import BytesIO
+    from PIL import Image
+    buf = BytesIO()
+    Image.new("RGB", (width, height), (200, 30, 30)).save(buf, "JPEG")
+    return buf.getvalue()
+
+
+def test_a_tall_picture_becomes_a_square_with_the_whole_picture_inside():
+    from io import BytesIO
+    from PIL import Image
+    from app.services.message_images import square_version
+    squared = square_version(_real_jpeg(800, 1000))
+    image = Image.open(BytesIO(squared))
+    assert image.size[0] == image.size[1]                       # square, so WhatsApp has nothing to crop
+    assert image.getpixel((image.width // 2, image.height // 2))[0] > 150   # the picture itself is in the middle
+
+
+def test_square_pictures_and_unreadable_data_are_left_alone():
+    from app.services.message_images import square_version
+    already = _real_jpeg(500, 500)
+    assert square_version(already) == already
+    junk = b"\xff\xd8\xff\xe0" + b"\x00" * 50
+    assert square_version(junk) == junk                         # never breaks sending
+
+
+def test_the_square_links_serve_square_pictures(client, alice):
+    from io import BytesIO
+    from PIL import Image
+    tall = _real_jpeg(600, 900)
+    made = client.post("/api/whatsapp/images", headers=_hdr(alice), json={
+        "category": "Cafe", "label": "Tall", "data_url": _url(tall), "thumb_url": _url(tall)}).json()
+    squared = client.get(f"/api/public/pictures/{made['uid']}/square")
+    assert squared.status_code == 200 and Image.open(BytesIO(squared.content)).size[0] == Image.open(BytesIO(squared.content)).size[1]
+    assert client.get(f"/api/public/pictures/{made['uid']}").content == tall      # the original is untouched
+    assert client.get("/api/public/pictures/" + "0" * 32 + "/square").status_code == 404
+    flyer = client.get("/api/public/pictures/flyer/square")
+    assert flyer.status_code == 200 and Image.open(BytesIO(flyer.content)).size == (1080, 1080)
+
+
+def test_the_template_header_uses_the_square_link(client, alice, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "https://api.example.test")
+    seen = {}
+    from app.services.whatsapp_cloud_client import WhatsAppCloudClient
+    monkeypatch.setattr(WhatsAppCloudClient, "send_text", staticmethod(
+        lambda db, to_phone, text_body, **kw: (seen.update(kw) or (True, "wamid.T", {"mode": "simulator"}))))
+    mine = _add(client, alice)
+    client.post("/api/ai-whatsapp/broadcast-all", headers=_hdr(alice), json={
+        "shops": [{"name": "Chai Corner", "phone": "919876543210"}], "custom_message": "hi", "image_id": mine["id"]})
+    assert seen["image_header_url"] == f"https://api.example.test/api/public/pictures/{mine['uid']}/square"
+    assert seen["image_url"] == f"https://api.example.test/api/public/pictures/{mine['uid']}"      # the note keeps the original

@@ -7,6 +7,7 @@ checked from the file's own first bytes, sizes are capped, and every picture bel
 """
 import base64
 import hashlib
+from io import BytesIO
 import os
 import re
 import tempfile
@@ -78,3 +79,41 @@ def file_for_sending(image) -> str:
         with open(path, "wb") as handle:
             handle.write(image.data)
     return path
+
+
+_square_cache: dict = {}
+
+
+def square_version(data: bytes, side: int = 1080) -> bytes:
+    """
+    A square JPEG showing the WHOLE picture. WhatsApp crops a template's header picture to a square, which cuts
+    the bottom off a tall flyer; here the picture is centred on a soft, blurred copy of itself so nothing is lost.
+    On any problem the original bytes are returned unchanged.
+    """
+    key = hashlib.sha1(data).hexdigest()
+    if key in _square_cache:
+        return _square_cache[key]
+    try:
+        from PIL import Image, ImageFilter
+
+        img = Image.open(BytesIO(data)).convert("RGB")
+        w, h = img.size
+        if abs(w - h) <= 2:
+            return data
+        s = max(w, h)
+        scale = s / min(w, h)
+        backdrop = img.resize((max(s, round(w * scale)), max(s, round(h * scale))))
+        left, top = (backdrop.width - s) // 2, (backdrop.height - s) // 2
+        backdrop = backdrop.crop((left, top, left + s, top + s)).filter(ImageFilter.GaussianBlur(max(8, s // 35)))
+        backdrop.paste(img, ((s - w) // 2, (s - h) // 2))
+        if s > side:
+            backdrop = backdrop.resize((side, side), Image.LANCZOS)
+        out = BytesIO()
+        backdrop.save(out, "JPEG", quality=88, optimize=True)
+        result = out.getvalue()
+    except Exception:
+        return data
+    if len(_square_cache) > 64:
+        _square_cache.clear()
+    _square_cache[key] = result
+    return result

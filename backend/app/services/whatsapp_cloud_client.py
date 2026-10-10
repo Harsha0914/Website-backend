@@ -81,6 +81,7 @@ class WhatsAppCloudClient:
         image_path: Optional[str] = None,
         image_url: Optional[str] = None,
         template_key: Optional[str] = None,
+        image_header_url: Optional[str] = None,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         Sends standard text message.
@@ -112,6 +113,7 @@ class WhatsAppCloudClient:
                 image_path=image_path,
                 image_url=image_url,
                 template_key=template_key,
+                image_header_url=image_header_url,
             )
 
         settings = get_whatsapp_settings(db)
