@@ -372,6 +372,25 @@ body {
 .ui-chip:hover { background: var(--ui-surface-2); border-color: var(--ui-primary); }
 .ui-chip-active { background: var(--ui-primary-soft); border-color: var(--ui-primary); color: var(--ui-primary-text); font-weight: 650; }
 
+/* ── Search form: section captions and the distance selector ──────────────── */
+.ui-eyebrow {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ui-muted);
+}
+.ui-eyebrow svg { width: 15px; height: 15px; color: var(--ui-primary); }
+.ui-form-section + .ui-form-section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--ui-border); }
+.ui-seg {
+  display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px;
+  background: var(--ui-surface-2); border: 1px solid var(--ui-border); border-radius: 12px;
+}
+.ui-seg button {
+  min-height: 36px; padding: 0 16px; border: 0; border-radius: 9px; background: transparent;
+  font-size: 0.88rem; font-weight: 600; color: var(--ui-muted); cursor: pointer;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.ui-seg button:hover { color: var(--ui-text); }
+.ui-seg button[aria-pressed="true"] { background: var(--ui-surface); color: var(--ui-primary-text); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+
 /* ── Status badges (always icon/text, never colour alone) ─────────────────── */
 .ui-badge {
   display: inline-flex; align-items: center; gap: 6px;

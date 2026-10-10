@@ -30,6 +30,7 @@ import {
   Armchair,
   Dog,
   Building2,
+  Ruler,
 } from 'lucide-react';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
@@ -238,10 +239,9 @@ export default function UserDashboard() {
           </header>
 
           <form onSubmit={handleSearchSubmit} className="ui-card ui-card-pad" aria-label="Find shops">
-            {/* Step 1: where */}
-            <section className="flex gap-4">
+            <section className="ui-form-section">
               <div className="flex-1 min-w-0">
-                <h2 className="sr-only">Where do you want to look?</h2>
+                <h2 className="ui-eyebrow"><MapPin aria-hidden="true" />Location</h2>
 
                 <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex-1 min-w-0">
@@ -309,25 +309,23 @@ export default function UserDashboard() {
               </div>
             </section>
 
-            <hr className="my-6" style={{ borderColor: 'var(--ui-border)' }} />
-
-            {/* Step 2: how far */}
-            <section className="flex gap-4">
+            <section className="ui-form-section">
               <div className="flex-1 min-w-0">
-                <h2 className="sr-only">How far?</h2>
-                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Search distance">
+                <h2 className="ui-eyebrow"><Ruler aria-hidden="true" />Search radius</h2>
+                <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Search distance">
+                  <div className="ui-seg">
                   {PRESET_DISTANCES.map((d) => (
                     <button
                       key={d}
                       type="button"
-                      className={`ui-chip ${Number(radiusKm) === d ? 'ui-chip-active' : ''}`}
                       aria-pressed={Number(radiusKm) === d}
                       onClick={() => { setRadius(d); setCustomRadiusInput(''); }}
                     >
                       {d < 1 ? `${d * 1000} m` : `${d} km`}
                     </button>
                   ))}
-                  <label className="flex items-center gap-2 ml-1">
+                  </div>
+                  <label className="flex items-center gap-2">
                     <span className="ui-help">Other:</span>
                     <input
                       type="number"
@@ -349,12 +347,9 @@ export default function UserDashboard() {
               </div>
             </section>
 
-            <hr className="my-6" style={{ borderColor: 'var(--ui-border)' }} />
-
-            {/* Step 3: what kind */}
-            <section className="flex gap-4">
+            <section className="ui-form-section">
               <div className="flex-1 min-w-0">
-                <h2 className="sr-only">What kind of shop?</h2>
+                <h2 className="ui-eyebrow"><Store aria-hidden="true" />Shop type</h2>
 
                 <div className="flex flex-wrap gap-2" role="group" aria-label="Shop type">
                   {visibleCategories.map((c) => {
