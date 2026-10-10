@@ -227,7 +227,7 @@ export default function UserDashboard() {
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--ui-bg)' }}>
       <Navbar />
 
-      <main className="flex-1">
+      <main className="flex-1 finder-tight">
         <section className="finder-hero">
           <div className="finder-hero-inner">
             <h1>Find shops near you</h1>
@@ -277,7 +277,7 @@ export default function UserDashboard() {
               </section>
 
               <section className="ui-form-section">
-                <SectionHead icon={Ruler} title="Search radius" />
+                <SectionHead icon={Ruler} title="Search" />
                 <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Search distance">
                   <div className="ui-seg">
                     {PRESET_DISTANCES.map((d) => (

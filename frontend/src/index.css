@@ -288,7 +288,7 @@ a[href*="google.com/maps"] {
 }
 
 body {
-  font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Nunito Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.55;
   background: var(--ui-bg);
@@ -732,6 +732,25 @@ body {
 .lp-final { padding: 48px 24px; text-align: center; color: #fff; border-radius: 24px; background: linear-gradient(135deg, #312e81 0%, #4f46e5 55%, #7c3aed 100%); box-shadow: 0 30px 60px -30px rgba(49,46,129,.7); }
 .lp-final h2 { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 800; letter-spacing: -0.02em; color: #fff; }
 .lp-final p { margin-top: 8px; color: rgba(255,255,255,.85); }
+
+/* ── Find shops: tighter spacing so the whole form fits on one screen ─────── */
+.finder-tight .finder-hero { padding-top: 14px !important; padding-bottom: 50px !important; }
+.finder-tight .finder-hero h1 { font-size: 1.75rem; }
+.finder-tight .finder-hero p { max-width: 110ch; margin-top: 4px; font-size: 0.95rem; line-height: 1.45; }
+.finder-tight .finder-body { margin-top: -34px; }
+.finder-tight .finder-card-body { padding: 12px 24px; }
+.finder-tight .finder-card .ui-form-section + .ui-form-section { margin-top: 10px; padding-top: 10px; }
+.finder-tight .finder-card .finder-sec-head { margin-bottom: 7px; }
+.finder-tight .finder-card .finder-sec-icon { width: 26px; height: 26px; }
+.finder-tight .finder-card .ui-tile { min-height: 36px; padding: 2px 10px; }
+.finder-tight .finder-card .ui-tile-icon { width: 22px; height: 22px; }
+.finder-tight .finder-card .ui-seg button { min-height: 32px; }
+.finder-tight .finder-card .ui-btn-sm { min-height: 26px; }
+.finder-tight .finder-keyword-wide { margin-top: 6px; }
+.finder-tight .finder-keyword .ui-input { min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
+.finder-tight .finder-actionbar { padding: 8px 24px; gap: 10px; }
+.finder-tight .finder-summary > div { padding: 6px 12px; }
+.finder-tight .finder-go { min-height: 42px; }
 
 /* ── Status badges (always icon/text, never colour alone) ─────────────────── */
 .ui-badge {
