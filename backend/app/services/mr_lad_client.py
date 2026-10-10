@@ -490,6 +490,7 @@ class MrLadWhatsAppClient:
         image_path: Optional[str] = None,
         image_url: Optional[str] = None,
         template_key: Optional[str] = None,
+        image_header_url: Optional[str] = None,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         Sends an outbound WhatsApp message via Mr LAD API.
@@ -713,7 +714,7 @@ class MrLadWhatsAppClient:
             if wants_picture and (cls.list_templates().get(chosen_template, {}).get("header_type") or "").strip():
                 # a picture-header template: the gateway needs BOTH of these to fill the header (a URL alone is refused)
                 init_payload["header_type"] = "image"
-                init_payload["header_url"] = image_url
+                init_payload["header_url"] = image_header_url or image_url   # the square version, so nothing is cropped
             res = _post(f"{api_base}/api/conversations/send-template-to-members", init_payload)
             init_data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
 

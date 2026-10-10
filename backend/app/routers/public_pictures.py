@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.message_image import MessageImage
+from app.services.message_images import square_version
 
 router = APIRouter(prefix="/api/public/pictures", tags=["Public pictures"])
 
@@ -33,6 +34,31 @@ def built_in_flyer():
     with open(path, "rb") as handle:
         data = handle.read()
     return Response(content=data, media_type="image/png" if path.lower().endswith(".png") else "image/jpeg", headers=_HEADERS)
+
+
+@router.get("/flyer/square")
+def built_in_flyer_square():
+    """The built-in flyer as a square: this is what WhatsApp fetches for a template header, so nothing is cropped."""
+    from app.services.mr_lad_client import MrLadWhatsAppClient
+
+    path = MrLadWhatsAppClient._resolve_flyer_paths().get("easybillbro")
+    if not path:
+        raise HTTPException(status_code=404, detail="Not found")
+    with open(path, "rb") as handle:
+        data = handle.read()
+    return Response(content=square_version(data), media_type="image/jpeg", headers=_HEADERS)
+
+
+@router.get("/{uid}/square")
+def picture_square(uid: str, db: Session = Depends(get_db)):
+    if not _UID.match(uid or ""):
+        raise HTTPException(status_code=404, detail="Not found")
+    img = db.query(MessageImage).filter(MessageImage.uid == uid).first()
+    if not img:
+        raise HTTPException(status_code=404, detail="Not found")
+    data = bytes(img.data)
+    squared = square_version(data)
+    return Response(content=squared, media_type="image/jpeg" if squared is not data else img.mime, headers=_HEADERS)
 
 
 @router.get("/{uid}")

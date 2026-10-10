@@ -588,11 +588,11 @@ def test_flyer_send(to_phone: str = Query(..., description="Phone number to test
     return result
 
 
-def _public_picture_url(request, name: str) -> str:
-    """Public link to a picture (the built-in flyer is called 'flyer'); used for the note added in Mr LAD."""
+def _public_picture_url(request, name: str, square: bool = False) -> str:
+    """Public link to a picture (the built-in flyer is called 'flyer'). square=True is the whole picture on a square canvas."""
     import os
     base = (settings.PUBLIC_BASE_URL or os.environ.get("RENDER_EXTERNAL_URL") or (str(request.base_url) if request is not None else "")).rstrip("/")
-    return f"{base}/api/public/pictures/{name}" if base else ""
+    return f"{base}/api/public/pictures/{name}{'/square' if square else ''}" if base else ""
 
 
 @router.get("/send-mode")
@@ -653,6 +653,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
     image_path = None
     image_label = None
     image_url = None
+    image_header_url = None
     if payload.image_id:
         from app.models.message_image import MessageImage
         from app.services.message_images import file_for_sending
@@ -662,6 +663,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
         image_path = file_for_sending(chosen)
         image_label = chosen.label
         image_url = _public_picture_url(request, chosen.uid)
+        image_header_url = _public_picture_url(request, chosen.uid, square=True)
 
     default_template = (
         "Hello {shop_name},\n\n"
@@ -763,6 +765,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                     image_path=image_path,
                     image_url=image_url or (_public_picture_url(request, "flyer") if should_send_flyer else None),
                     template_key=payload.template_key,
+                    image_header_url=image_header_url or (_public_picture_url(request, "flyer", square=True) if should_send_flyer else None),
                 )
             except Exception as w_err:
                 whatsapp_sent, w_res = False, str(w_err)
