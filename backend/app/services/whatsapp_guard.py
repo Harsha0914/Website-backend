@@ -113,6 +113,44 @@ def outbound_count_last_24h(db: Session) -> int:
     )
 
 
+_IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def ist_day_start_utc(now: Optional[datetime] = None) -> datetime:
+    """The start of today in India (midnight IST) as a naive UTC time, which is how the database stores times."""
+    now = now or datetime.utcnow()
+    ist_now = now + _IST_OFFSET
+    return ist_now.replace(hour=0, minute=0, second=0, microsecond=0) - _IST_OFFSET
+
+
+def outbound_count_today(db: Session, owner_id: int) -> int:
+    """Messages this account has really sent since midnight IST (the daily limit counts these)."""
+    return (
+        db.query(WhatsAppMessage.id)
+        .join(WhatsAppConversation, WhatsAppConversation.id == WhatsAppMessage.conversation_id)
+        .filter(
+            WhatsAppConversation.owner_id == owner_id,
+            WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
+            WhatsAppMessage.status.in_(_DELIVERED_STATUSES),
+            WhatsAppMessage.created_at >= ist_day_start_utc(),
+        )
+        .count()
+    )
+
+
+def daily_limit_status(db: Session, owner_id: int) -> dict:
+    """{limit, sent_today, remaining, reached, resets_at}: what the app shows about today's sending limit."""
+    limit = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
+    sent = outbound_count_today(db, owner_id)
+    return {
+        "limit": limit,
+        "sent_today": sent,
+        "remaining": max(0, limit - sent) if limit > 0 else None,
+        "reached": bool(limit > 0 and sent >= limit),
+        "resets_at": (ist_day_start_utc() + timedelta(days=1)).isoformat(),
+    }
+
+
 def can_message(
     db: Session,
     phone: Optional[str],
@@ -136,8 +174,11 @@ def can_message(
         return False, "opted_out"
 
     cap = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
-    if cap > 0 and outbound_count_last_24h(db) + batch_sent_so_far >= cap:
-        return False, "daily_limit_reached"
+    if cap > 0:
+        # The limit is per account and per Indian day. Without an account (system calls) it stays a global 24-hour cap.
+        used = outbound_count_today(db, owner_id) if owner_id is not _ANY_OWNER else outbound_count_last_24h(db)
+        if used + batch_sent_so_far >= cap:
+            return False, "daily_limit_reached"
 
     if check_cooldown:
         days = int(settings.WHATSAPP_REPEAT_COOLDOWN_DAYS or 0)

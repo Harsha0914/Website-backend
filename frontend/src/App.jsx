@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 // Public pages
 import LandingPage from './pages/LandingPage';
+import DailyLimitToast from './components/common/DailyLimitToast';
 import RegisterPage from './pages/auth/RegisterPage';
 import LoginPage from './pages/auth/LoginPage';
 
@@ -164,6 +165,7 @@ export default function App() {
       {/* Fallback Route */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+      <DailyLimitToast />
   </>
   );
 }

@@ -15,6 +15,7 @@ from app.auth.dependencies import get_current_user, require_admin
 from app.services.whatsapp_guard import (
     SendBlocked,
     can_message,
+    daily_limit_status,
     delivery_status,
     is_valid_phone,
 )
@@ -595,6 +596,14 @@ def _public_picture_url(request, name: str, square: bool = False) -> str:
     return f"{base}/api/public/pictures/{name}{'/square' if square else ''}" if base else ""
 
 
+@router.get("/daily-limit")
+def daily_limit(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """How many messages the signed-in account may still send today (the limit resets at midnight, Indian time)."""
+    from app.services.chat_durability import restore_for_user
+    restore_for_user(db, current_user)  # after a redeploy today's messages are in MongoDB, not yet in SQL
+    return daily_limit_status(db, current_user.id)
+
+
 @router.get("/recently-contacted")
 def recently_contacted(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """
@@ -885,4 +894,5 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
         "total_sent": sent_count,
         "total_skipped": skipped_count,
         "results": results,
+        "daily_limit": daily_limit_status(db, current_user.id),   # so the app can say "limit reached" right after sending
     }

@@ -16,6 +16,7 @@ import { useShopStore } from '../../store/shopStore';
 import { getGoogleMapsUrl, getGoogleMapsDirectionsUrl } from '../../services/locationService';
 import { formatPhoneNumber } from '../../services/whatsappService';
 import WhatsAppLaunchModal from '../chat/WhatsAppLaunchModal';
+import { useDailyLimit } from '../../services/dailyLimit';
 import { useContactedShops, contactedAt, canMessageAgainOn, refreshContacted } from '../../services/contactedShops';
 import { formatDateTimeIST } from '../../utils/time';
 
@@ -38,6 +39,7 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
   const canMessage = Boolean(normalizedPhone);
   const tone = { NO_WEBSITE: '#ef4444', WEBSITE_UNREACHABLE: '#f59e0b', WEBSITE_AVAILABLE: '#10b981' }[business.website_status] || '#94a3b8';
   const contacted = useContactedShops();
+  const dailyLimit = useDailyLimit();
   const lastContacted = canMessage ? contactedAt(contacted, normalizedPhone) : null;
 
   const googleMapsUrl = getGoogleMapsUrl(business);
@@ -121,12 +123,12 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
             <button
               type="button"
               onClick={(e) => { stop(e); setShowWAModal(true); }}
-              disabled={!canMessage}
-              title={canMessage ? 'Choose a message and send it to this shop on WhatsApp' : 'This shop has no valid phone number'}
+              disabled={!canMessage || dailyLimit.reached}
+              title={dailyLimit.reached ? `Daily limit of ${dailyLimit.limit} messages reached. You can send again tomorrow.` : canMessage ? 'Choose a message and send it to this shop on WhatsApp' : 'This shop has no valid phone number'}
               className="ui-btn ui-btn-success ui-btn-sm"
             >
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
-              {canMessage ? 'Send Message' : 'No phone number'}
+              {!canMessage ? 'No phone number' : dailyLimit.reached ? 'Limit reached' : 'Send Message'}
             </button>
           )}
 

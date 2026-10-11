@@ -36,6 +36,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { GooglePlacesAutocomplete } from '../../components/location/GooglePlacesAutocomplete';
 import GoogleMapsConnectModal from '../../components/common/GoogleMapsConnectModal';
 import BulkWhatsAppBroadcastModal from '../../components/shops/BulkWhatsAppBroadcastModal';
+import { useDailyLimit } from '../../services/dailyLimit';
 import { launchWhatsAppApp } from '../../services/whatsappService';
 import { useShopStore } from '../../store/shopStore';
 import { isBusinessMatching, resolveKeywordToCategories } from '../../utils/searchMatcher';
@@ -102,6 +103,7 @@ const TAB_CONFIG = {
 export default function ShopsPage({ defaultTab = 'all' }) {
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [viewMode, setViewMode] = useState('list');
+  const dailyLimit = useDailyLimit();
   const [showModifyModal, setShowModifyModal] = useState(false);
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
   const navigate = useNavigate();
@@ -345,9 +347,17 @@ export default function ShopsPage({ defaultTab = 'all' }) {
             <div className="min-w-0">
               <h1>Shops near {locationName}</h1>
               <p aria-live="polite">{statusLine}</p>
-              {sourceLabel && !loading && (
-                <span className="results-source"><MapPin className="h-3.5 w-3.5" aria-hidden="true" />Shop details from {sourceLabel}</span>
-              )}
+              <div className="results-pills">
+                {sourceLabel && !loading && (
+                  <span className="results-source"><MapPin className="h-3.5 w-3.5" aria-hidden="true" />Shop details from {sourceLabel}</span>
+                )}
+                {dailyLimit.available && dailyLimit.limit > 0 && (
+                  <span className={`results-source ${dailyLimit.reached ? 'is-warn' : ''}`}>
+                    <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                    Today: {dailyLimit.sentToday} of {dailyLimit.limit} messages sent{dailyLimit.reached ? ' · limit reached' : ''}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="results-actions">
               <button type="button" onClick={() => setShowModifyModal(true)} className="results-btn results-btn-ghost">
