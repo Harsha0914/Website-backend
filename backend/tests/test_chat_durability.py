@@ -23,7 +23,8 @@ class FakeColl:
         self.docs = {}
 
     def replace_one(self, flt, doc, upsert=False):
-        self.docs[flt["_id"]] = dict(doc)
+        # the real driver matches on any field; a document is found by its _id or by its (single) filter value
+        self.docs[flt.get("_id", next(iter(flt.values())))] = dict(doc)
 
     def delete_one(self, flt):
         self.docs.pop(flt["_id"], None)
@@ -33,7 +34,7 @@ class FakeColl:
             if all(_match(d, f, v) for f, v in flt.items()):
                 self.docs.pop(k)
 
-    def find(self, flt):
+    def find(self, flt, projection=None):
         return FakeCursor(dict(d) for d in self.docs.values() if all(_match(d, f, v) for f, v in flt.items()))
 
 
@@ -222,3 +223,101 @@ def test_another_account_never_sees_my_contacted_shops_after_a_redeploy(client, 
 
     assert client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(bob)).json()["contacted"] == []
     assert len(client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(alice)).json()["contacted"]) == 1
+
+
+# ─── Google Maps shops and the daily record ──────────────────────────────────
+def _shop(place_id, name, status="NO_WEBSITE", phone="9876500000", lat=17.45, lng=78.39):
+    from app.models.business import Business, WebsiteStatus
+    return Business(external_place_id=place_id, name=name, category="Cafe", address="Madhapur, Hyderabad", latitude=lat, longitude=lng,
+                    phone=phone, rating=4.5, review_count=10, website_status=WebsiteStatus(status), source="google_places")
+
+
+def _wipe_shops(db):
+    from app.models.business import Business
+    db.info[cd._SKIP] = True
+    db.query(Business).delete()
+    db.commit()
+    db.info.pop(cd._SKIP, None)
+
+
+def test_google_maps_shops_are_copied_to_mongodb_when_they_are_saved(db_session, mongo):
+    db_session.add(_shop("ChIJ-one", "Prime Cafe"))
+    db_session.commit()
+    doc = mongo[cd.BIZ_COLL].docs["ChIJ-one"]
+    assert doc["name"] == "Prime Cafe" and doc["website_status"] == "NO_WEBSITE" and doc["phone"] == "9876500000"
+    assert doc["location"] == {"type": "Point", "coordinates": [78.39, 17.45]}
+
+    # a later change (for example the website check finishing) is copied too
+    from app.models.business import Business, WebsiteStatus
+    biz = db_session.query(Business).filter_by(external_place_id="ChIJ-one").one()
+    biz.website_status = WebsiteStatus.WEBSITE_AVAILABLE
+    biz.website_url = "https://primecafe.example"
+    db_session.commit()
+    doc = mongo[cd.BIZ_COLL].docs["ChIJ-one"]
+    assert doc["website_status"] == "WEBSITE_AVAILABLE" and doc["website_url"] == "https://primecafe.example"
+
+
+def test_shops_come_back_after_a_redeploy_and_are_not_duplicated(db_session, mongo):
+    from sqlalchemy.orm import sessionmaker
+    from app.models.business import Business, WebsiteStatus
+    factory = sessionmaker(bind=db_session.get_bind())
+    db_session.add_all([_shop("ChIJ-a", "Shop A"), _shop("ChIJ-b", "Shop B", status="WEBSITE_AVAILABLE", phone=None)])
+    db_session.commit()
+
+    _wipe_shops(db_session)                     # what a redeploy does to the SQL database
+    assert db_session.query(Business).count() == 0
+
+    assert cd.restore_businesses(factory) == 2
+    db_session.expire_all()
+    back = {b.external_place_id: b for b in db_session.query(Business).all()}
+    assert set(back) == {"ChIJ-a", "ChIJ-b"}
+    assert back["ChIJ-a"].name == "Shop A" and back["ChIJ-a"].phone == "9876500000" and back["ChIJ-a"].website_status == WebsiteStatus.NO_WEBSITE
+    assert back["ChIJ-b"].website_status == WebsiteStatus.WEBSITE_AVAILABLE and back["ChIJ-b"].phone is None
+    assert cd.restore_businesses(factory) == 0  # asking again adds nothing
+    assert db_session.query(Business).count() == 2
+
+
+def test_old_copies_with_the_long_status_text_still_restore(db_session, mongo):
+    from sqlalchemy.orm import sessionmaker
+    from app.models.business import Business, WebsiteStatus, WebsiteQuality
+    mongo[cd.BIZ_COLL].docs["old"] = {"external_place_id": "old", "name": "Old Copy", "latitude": 1.0, "longitude": 2.0,
+                                      "website_status": "WebsiteStatus.NO_WEBSITE", "website_quality": "WebsiteQuality.UNANALYZED"}
+    assert cd.restore_businesses(sessionmaker(bind=db_session.get_bind())) == 1
+    biz = db_session.query(Business).filter_by(external_place_id="old").one()
+    assert biz.website_status == WebsiteStatus.NO_WEBSITE and biz.website_quality == WebsiteQuality.UNANALYZED
+
+
+def test_shops_that_only_exist_in_sql_are_copied_to_mongodb_once(db_session, mongo):
+    from sqlalchemy.orm import sessionmaker
+    factory = sessionmaker(bind=db_session.get_bind())
+    db_session.info[cd._SKIP] = True            # saved before the mirror existed
+    db_session.add_all([_shop("ChIJ-x", "X"), _shop("ChIJ-y", "Y")])
+    db_session.commit()
+    db_session.info.pop(cd._SKIP, None)
+    assert mongo[cd.BIZ_COLL].docs == {}
+    assert cd.backfill_businesses(factory) == 2
+    assert set(mongo[cd.BIZ_COLL].docs) == {"ChIJ-x", "ChIJ-y"}
+    assert cd.backfill_businesses(factory) == 0
+
+
+def test_a_daily_record_is_kept_in_mongodb_for_every_account_and_day(client, db_session, mongo, monkeypatch):
+    from datetime import datetime, timedelta
+    _really_sent(monkeypatch)
+    alice = _user(db_session, "Alice", "alice@example.test")
+    _pitch(client, alice, "first message")
+    client.post("/api/ai-whatsapp/broadcast-all", headers=_hdr(alice), json={
+        "shops": [{"name": "Second Shop", "phone": "919811122233"}], "custom_message": "second", "include_flyer": False})
+
+    today = (datetime.utcnow() + timedelta(hours=5, minutes=30)).date().isoformat()
+    doc = mongo[cd.DAILY_COLL].docs[f"alice@example.test|{today}"]
+    assert doc["owner_email"] == "alice@example.test" and doc["date"] == today
+    assert doc["messages_sent"] == 2 and doc["shops_contacted"] == 2 and doc["replies_received"] == 0
+
+
+def test_the_daily_record_belongs_to_one_account(client, db_session, mongo, monkeypatch):
+    _really_sent(monkeypatch)
+    alice = _user(db_session, "Alice", "alice@example.test")
+    bob = _user(db_session, "Bob", "bob@example.test")
+    _pitch(client, alice, "alice only")
+    assert all(k.startswith("alice@example.test|") for k in mongo[cd.DAILY_COLL].docs)
+    assert not any(k.startswith("bob@example.test|") for k in mongo[cd.DAILY_COLL].docs)

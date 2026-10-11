@@ -42,6 +42,7 @@ seed_empty_database(engine, Base.metadata, _DB_PATH)
 from app.services import chat_durability  # noqa: E402  (importing installs the change listeners)
 from app.database import SessionLocal  # noqa: E402
 chat_durability.start_backfill(SessionLocal)
+chat_durability.start_business_sync(SessionLocal)   # Google Maps shops: restore from MongoDB, then copy what only SQL has
 
 def _ensure_sqlite_columns():
     try:
