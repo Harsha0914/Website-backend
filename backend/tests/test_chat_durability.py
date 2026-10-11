@@ -92,6 +92,7 @@ def _wipe_sql(db):
     db.query(WhatsAppConversation).delete()
     db.commit()
     cd_skip.pop(cd._SKIP, None)
+    cd._restored_users.clear()  # a redeploy is also a fresh process: nothing has been restored yet
 
 
 def test_every_saved_chat_is_copied_to_mongodb(client, db_session, mongo):
@@ -177,3 +178,47 @@ def test_a_mongodb_outage_never_breaks_sending(client, db_session, monkeypatch):
     cd._restored_users.clear()
     assert _pitch(client, alice, "still works 2")["status"] in ("sent", "simulated", "skipped")
     assert client.get("/api/whatsapp/conversations", headers=_hdr(alice)).status_code == 200
+
+
+# ─── "Already Contacted" must survive a redeploy ─────────────────────────────
+def _really_sent(monkeypatch):
+    monkeypatch.setattr("app.services.whatsapp_guard.delivery_status", lambda ok, raw=None: "sent")
+    monkeypatch.setattr("app.routers.ai_whatsapp_hub.delivery_status", lambda ok, raw=None: "sent")
+
+
+def test_the_already_contacted_marker_comes_back_after_a_redeploy(client, db_session, mongo, monkeypatch):
+    _really_sent(monkeypatch)
+    alice = _user(db_session, "Alice", "alice@example.test")
+    assert _pitch(client, alice, "first message")["status"] == "sent"
+
+    _wipe_sql(db_session)
+    cd._restored_users.clear()
+
+    # straight to the results page: the chat list was never opened since the redeploy
+    marked = client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(alice)).json()
+    assert [c["phone_key"] for c in marked["contacted"]] == [PHONE[-10:]]
+    assert marked["days"] == 30
+
+
+def test_a_shop_cannot_be_messaged_twice_in_30_days_even_across_a_redeploy(client, db_session, mongo, monkeypatch):
+    _really_sent(monkeypatch)
+    alice = _user(db_session, "Alice", "alice@example.test")
+    assert _pitch(client, alice, "first message")["status"] == "sent"
+
+    _wipe_sql(db_session)
+    cd._restored_users.clear()
+
+    second = _pitch(client, alice, "second message, right after the redeploy")
+    assert second["status"] == "skipped" and second["error"] == "recently_contacted"
+
+
+def test_another_account_never_sees_my_contacted_shops_after_a_redeploy(client, db_session, mongo, monkeypatch):
+    _really_sent(monkeypatch)
+    alice = _user(db_session, "Alice", "alice@example.test")
+    bob = _user(db_session, "Bob", "bob@example.test")
+    _pitch(client, alice, "alice only")
+    _wipe_sql(db_session)
+    cd._restored_users.clear()
+
+    assert client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(bob)).json()["contacted"] == []
+    assert len(client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(alice)).json()["contacted"]) == 1
