@@ -19,7 +19,7 @@ export default function AuthLayout({ title, subtitle, children, footer, compact 
     <div className={`min-h-screen flex flex-col ${compact ? 'auth-compact' : ''}`} style={{ background: 'var(--ui-bg)' }}>
       <main className={`flex-1 flex items-start sm:items-center justify-center px-4 ${compact ? 'py-4 pb-24 sm:pb-4' : 'py-10 pb-28'}`}>
         <div className={`w-full relative ${'max-w-md'}`}>
-          <Link to="/" className={`ui-btn ui-btn-ghost ui-btn-sm ${compact ? 'mb-1' : 'mb-4'}`} style={{ marginLeft: -8 }}>
+          <Link to="/" className="auth-back">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Back to home
           </Link>
