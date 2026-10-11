@@ -400,32 +400,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
           {/* Filters */}
           <section className="ui-card ui-card-pad space-y-4 results-filters" aria-label="Filters">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-              <div className="relative md:col-span-3">
-                <label htmlFor="shop-filter-keyword" className="sr-only">Search by name or item</label>
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--ui-muted)' }} aria-hidden="true" />
-                <input
-                  id="shop-filter-keyword"
-                  type="text"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  placeholder="Search name or item"
-                  className="ui-input"
-                  style={{ paddingLeft: 40 }}
-                  autoComplete="off"
-                />
-                {keyword && (
-                  <button
-                    type="button"
-                    onClick={() => setKeyword('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 ui-btn ui-btn-ghost ui-btn-sm"
-                    style={{ width: 32, padding: 0, minHeight: 32 }}
-                    aria-label="Clear search"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              <div className="md:col-span-3">
+              <div className="md:col-span-4">
                 <label htmlFor="shop-filter-phone" className="sr-only">Phone number</label>
                 <select
                   id="shop-filter-phone"
@@ -438,7 +413,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   <option value="without">Without phone number ({phoneCounts.without})</option>
                 </select>
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-3">
                 <label htmlFor="shop-filter-rating" className="sr-only">Rating</label>
                 <select
                   id="shop-filter-rating"
@@ -453,7 +428,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   ))}
                 </select>
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-3">
                 <label htmlFor="shop-filter-sort" className="sr-only">Sort by</label>
                 <select id="shop-filter-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="ui-select">
                   <option value="rating-desc">Best rated first</option>
