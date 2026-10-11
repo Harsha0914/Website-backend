@@ -1,5 +1,5 @@
 /**
- * Which shops this account has already messaged in the last few days (7 by default, set by the server).
+ * Which shops this account has already messaged in the last few days (30 by default, set by the server).
  * The shop cards show "Already contacted" instead of the send button, and Quick Select skips these shops.
  * The server only ever returns the signed-in account's own shops.
  */
@@ -7,7 +7,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import api from './api';
 import { parseServerDate, formatDateIST, daysAgoIST } from '../utils/time';
 
-let state = { map: {}, days: 7, loaded: false };
+let state = { map: {}, days: 30, loaded: false };
 let inflight = null;
 const listeners = new Set();
 
@@ -23,7 +23,7 @@ export function refreshContacted() {
     .then((res) => {
       const map = {};
       (res.data?.contacted || []).forEach((c) => { map[c.phone_key] = c.last_sent_at; });
-      state = { map, days: res.data?.days || 7, loaded: true };
+      state = { map, days: res.data?.days || 30, loaded: true };
     })
     .catch(() => { state = { ...state, loaded: true }; })   // never block the page because of this
     .finally(() => { inflight = null; emit(); });
@@ -40,7 +40,12 @@ export function useContactedShops() {
 /** When this shop was last messaged (an ISO time) or null if it can be messaged. */
 export function contactedAt(snapshot, phone) {
   const at = snapshot?.map?.[phoneKey(phone)];
-  return at || null;
+  if (!at) return null;
+  // A page left open for a long time: once the window has passed the shop can be messaged again.
+  const sent = parseServerDate(at);
+  const days = snapshot?.days || 30;
+  if (sent && Date.now() - sent.getTime() > days * 86400000) return null;
+  return at;
 }
 
 /** "Today", "Yesterday" or "3 days ago", in Indian time. */
@@ -53,7 +58,7 @@ export function contactedAgo(iso) {
 }
 
 /** The day this shop can be messaged again, e.g. "16 Oct". */
-export function canMessageAgainOn(iso, days = 7) {
+export function canMessageAgainOn(iso, days = 30) {
   const d = parseServerDate(iso);
   if (!d) return '';
   return formatDateIST(new Date(d.getTime() + days * 86400000), { day: 'numeric', month: 'short' });

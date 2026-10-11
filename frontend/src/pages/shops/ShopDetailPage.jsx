@@ -14,6 +14,7 @@ import {
   Sparkles,
   Navigation,
   MessageCircle,
+  Check,
 } from 'lucide-react';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
@@ -25,6 +26,8 @@ import api from '../../services/api';
 import { getGoogleMapsUrl, getGoogleMapsDirectionsUrl } from '../../services/locationService';
 import { getWhatsAppUrl } from '../../services/whatsappService';
 import WhatsAppLaunchModal from '../../components/chat/WhatsAppLaunchModal';
+import { useContactedShops, contactedAt, canMessageAgainOn, refreshContacted } from '../../services/contactedShops';
+import { formatDateTimeIST } from '../../utils/time';
 import { useShopStore } from '../../store/shopStore';
 
 export default function ShopDetailPage() {
@@ -38,6 +41,7 @@ export default function ShopDetailPage() {
   const [reanalyzing, setReanalyzing] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showWAModal, setShowWAModal] = useState(false);
+  const contacted = useContactedShops();
   const [requestMessage, setRequestMessage] = useState('');
   const [requestSubmitted, setRequestSubmitted] = useState(false);
 
@@ -299,16 +303,34 @@ export default function ShopDetailPage() {
           {/* Right Column: Actions & Chat Launch */}
           <div className="space-y-6">
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-              {/* Direct WhatsApp Contact Button */}
-              <button
-                type="button"
-                onClick={() => setShowWAModal(true)}
-                className="w-full py-3.5 px-4 text-xs font-extrabold text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
-                title="Choose a message and send it on WhatsApp"
-              >
-                <MessageCircle className="w-4 h-4 text-emerald-100" />
-                <span>Send WhatsApp message</span>
-              </button>
+              {/* Direct WhatsApp Contact Button: becomes "Already Contacted" for 30 days after a message */}
+              {(() => {
+                const last = business?.phone ? contactedAt(contacted, business.phone) : null;
+                if (last) {
+                  return (
+                    <div
+                      className="w-full py-3.5 px-4 text-xs font-extrabold rounded-xl flex items-center justify-center gap-2 cursor-default"
+                      style={{ color: 'var(--ui-info)', background: 'var(--ui-info-soft)', border: '1px solid color-mix(in srgb, var(--ui-info) 28%, transparent)' }}
+                      role="status"
+                      title={`You messaged this shop on ${formatDateTimeIST(last)}. You can message it again from ${canMessageAgainOn(last, contacted.days)}.`}
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Already Contacted</span>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setShowWAModal(true)}
+                    className="w-full py-3.5 px-4 text-xs font-extrabold text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
+                    title="Choose a message and send it on WhatsApp"
+                  >
+                    <MessageCircle className="w-4 h-4 text-emerald-100" />
+                    <span>Send Message</span>
+                  </button>
+                );
+              })()}
 
               {/* Driving Directions */}
               <a
@@ -351,7 +373,7 @@ export default function ShopDetailPage() {
         </div>
       </main>
 
-      <WhatsAppLaunchModal business={business} isOpen={showWAModal} onClose={() => setShowWAModal(false)} />
+      <WhatsAppLaunchModal business={business} isOpen={showWAModal} onClose={() => setShowWAModal(false)} onSent={() => refreshContacted()} />
 
       {/* Website Development Request Modal */}
       {showRequestModal && (

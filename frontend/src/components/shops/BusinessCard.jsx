@@ -126,7 +126,7 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
               className="ui-btn ui-btn-success ui-btn-sm"
             >
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
-              {canMessage ? 'Send WhatsApp message' : 'No phone number'}
+              {canMessage ? 'Send Message' : 'No phone number'}
             </button>
           )}
 
@@ -144,7 +144,7 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
               title={`You messaged this shop on ${formatDateTimeIST(lastContacted)}. You can message it again from ${canMessageAgainOn(lastContacted, contacted.days)}.`}
             >
               <Check className="h-4 w-4" aria-hidden="true" />
-              Already contacted
+              Already Contacted
             </span>
           )}
 

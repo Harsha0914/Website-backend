@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     WHATSAPP_DAILY_SEND_LIMIT: int = 200           # max outbound messages per rolling 24h
     WHATSAPP_MAX_BROADCAST_BATCH: int = 50         # max recipients per broadcast request
     WHATSAPP_BROADCAST_DELAY_SECONDS: float = 1.5  # pause between broadcast sends
-    WHATSAPP_REPEAT_COOLDOWN_DAYS: int = 7         # no repeat pitch to the same number inside this window
+    WHATSAPP_REPEAT_COOLDOWN_DAYS: int = 30        # no repeat pitch to the same number inside this window
     # Public address of this backend (e.g. https://my-api.onrender.com). Used for the picture links added to
     # Mr LAD notes. Leave empty on Render: its own address is detected automatically.
     PUBLIC_BASE_URL: str = ""

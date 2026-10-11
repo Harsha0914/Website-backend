@@ -44,7 +44,7 @@ function StatusMark({ status }) {
  */
 export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = [], onBroadcastComplete, onlyNoWebsiteDefault = false }) {
   const [step, setStep] = useState('select'); // 'select' | 'message' | 'send'
-  const contactedState = useContactedShops(); // shops already messaged in the last 7 days
+  const contactedState = useContactedShops(); // shops already messaged inside the repeat window (30 days)
   const [selected, setSelected] = useState(() => new Set());
   const [query, setQuery] = useState('');
   const [onlyNoSite, setOnlyNoSite] = useState(onlyNoWebsiteDefault);
@@ -198,7 +198,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
-  // Shops messaged in the last 7 days cannot be picked: the server would skip them anyway.
+  // Shops messaged inside the repeat window cannot be picked: the server would skip them anyway.
   const pickable = visible.filter((c) => !c.contactedAt);
   const alreadyContactedCount = contacts.filter((c) => c.contactedAt).length;
   const selectFirst = (n) => setSelected(new Set(pickable.slice(0, n).map((c) => c.key)));
@@ -316,7 +316,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                 const noSite = c.shop.website_status === 'NO_WEBSITE' || c.shop.website_status === 'WEBSITE_UNREACHABLE';
                 return (
                   <li key={c.key}>
-                    <label className={`qs-row ${checked ? 'is-checked' : ''} ${c.contactedAt ? 'is-contacted' : ''}`} title={c.contactedAt ? 'You already messaged this shop in the last 7 days' : undefined}>
+                    <label className={`qs-row ${checked ? 'is-checked' : ''} ${c.contactedAt ? 'is-contacted' : ''}`} title={c.contactedAt ? `You already messaged this shop in the last ${contactedState.days} days` : undefined}>
                       <input type="checkbox" checked={checked} disabled={Boolean(c.contactedAt)} onChange={() => toggle(c.key)} className="qs-check" />
                       <span className="qs-avatar" aria-hidden="true">{(c.name || '?').trim().charAt(0).toUpperCase()}</span>
                       <span className="min-w-0 flex-1">
@@ -333,7 +333,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
 
             <div className="qs-foot">
               <p className="text-sm" style={{ color: selectedCount > DAILY_LIMIT_HINT ? 'var(--ui-warning)' : 'var(--ui-muted)' }}>
-                {selectedCount > DAILY_LIMIT_HINT ? `The daily limit is about ${DAILY_LIMIT_HINT} messages; the rest will wait.` : 'Shops you contacted in the last 7 days are skipped.'}
+                {selectedCount > DAILY_LIMIT_HINT ? `The daily limit is about ${DAILY_LIMIT_HINT} messages; the rest will wait.` : `Shops you contacted in the last ${contactedState.days} days are skipped.`}
               </p>
               <button type="button" disabled={selectedCount === 0} onClick={() => setStep('message')} className="ui-btn ui-btn-primary qs-next">
                 Next: choose the message ({selectedCount})
