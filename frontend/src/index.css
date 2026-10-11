@@ -774,6 +774,32 @@ body {
 .limit-toast button:hover { background: var(--ui-surface-2); }
 @media (max-width: 767px) { .limit-toast { right: 16px; left: 16px; bottom: 84px; max-width: none; } }
 
+/* ── Dropdown menu (SelectMenu) ───────────────────────────────────────────── */
+.sm-root { position: relative; }
+.sm-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; padding: 0 14px;
+  font: inherit; font-size: 0.95rem; text-align: left; color: var(--ui-text); cursor: pointer;
+  background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: 12px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.sm-trigger:hover { border-color: var(--ui-primary); }
+.sm-trigger[aria-expanded="true"] { border-color: var(--ui-primary); box-shadow: var(--ui-focus); }
+.sm-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-chevron { flex: none; color: var(--ui-muted); transition: transform .15s; }
+.sm-chevron.is-open { transform: rotate(180deg); }
+.sm-menu {
+  position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; min-width: 100%; width: max-content; max-width: min(360px, 92vw); max-height: 280px; overflow-y: auto;
+  margin: 0; padding: 6px; list-style: none;
+  background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 14px;
+  box-shadow: 0 20px 40px -12px rgba(15, 23, 42, .28), 0 2px 6px rgba(15, 23, 42, .06);
+  animation: sm-in .12s ease-out;
+}
+@keyframes sm-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.sm-option { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 12px; font-size: 0.92rem; color: var(--ui-text-2); border-radius: 10px; cursor: pointer; }
+.sm-option.is-active { background: var(--ui-surface-2); color: var(--ui-text); }
+.sm-option.is-selected { color: var(--ui-primary-text); font-weight: 650; background: var(--ui-primary-soft); }
+.sm-option svg { flex: none; color: var(--ui-primary); }
+
 /* ── Status badges (always icon/text, never colour alone) ─────────────────── */
 .ui-badge {
   display: inline-flex; align-items: center; gap: 6px;

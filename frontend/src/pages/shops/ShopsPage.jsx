@@ -37,6 +37,7 @@ import { GooglePlacesAutocomplete } from '../../components/location/GooglePlaces
 import GoogleMapsConnectModal from '../../components/common/GoogleMapsConnectModal';
 import BulkWhatsAppBroadcastModal from '../../components/shops/BulkWhatsAppBroadcastModal';
 import { useDailyLimit } from '../../services/dailyLimit';
+import SelectMenu from '../../components/common/SelectMenu';
 import { launchWhatsAppApp } from '../../services/whatsappService';
 import { useShopStore } from '../../store/shopStore';
 import { isBusinessMatching, resolveKeywordToCategories } from '../../utils/searchMatcher';
@@ -402,40 +403,45 @@ export default function ShopsPage({ defaultTab = 'all' }) {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
               <div className="md:col-span-4">
                 <label htmlFor="shop-filter-phone" className="sr-only">Phone number</label>
-                <select
+                <SelectMenu
                   id="shop-filter-phone"
+                  ariaLabel="Phone number"
                   value={phoneFilter}
-                  onChange={(e) => setPhoneFilter(e.target.value)}
-                  className="ui-select"
-                >
-                  <option value="all">All shops ({phoneCounts.all})</option>
-                  <option value="with">With phone number ({phoneCounts.with})</option>
-                  <option value="without">Without phone number ({phoneCounts.without})</option>
-                </select>
+                  onChange={setPhoneFilter}
+                  options={[
+                    { value: 'all', label: `All shops (${phoneCounts.all})` },
+                    { value: 'with', label: `With phone number (${phoneCounts.with})` },
+                    { value: 'without', label: `Without phone number (${phoneCounts.without})` },
+                  ]}
+                />
               </div>
               <div className="md:col-span-3">
                 <label htmlFor="shop-filter-rating" className="sr-only">Rating</label>
-                <select
+                <SelectMenu
                   id="shop-filter-rating"
+                  ariaLabel="Rating"
                   value={selectedRating}
-                  onChange={(e) => setSelectedRating(e.target.value)}
-                  className="ui-select"
-                >
-                  {['all', '4plus', '5', '4', '3', '2', '1', 'unrated'].map((r) => (
-                    <option key={r} value={r}>
-                      {ratingLabel(r)} ({r === 'all' ? ratingCounts.all : r === '4plus' ? ratingCounts.fourPlus : ratingCounts[r]})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedRating}
+                  options={['all', '4plus', '5', '4', '3', '2', '1', 'unrated'].map((r) => ({
+                    value: r,
+                    label: `${ratingLabel(r)} (${r === 'all' ? ratingCounts.all : r === '4plus' ? ratingCounts.fourPlus : ratingCounts[r]})`,
+                  }))}
+                />
               </div>
               <div className="md:col-span-3">
                 <label htmlFor="shop-filter-sort" className="sr-only">Sort by</label>
-                <select id="shop-filter-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="ui-select">
-                  <option value="rating-desc">Best rated first</option>
-                  <option value="rating-asc">Lowest rated first</option>
-                  <option value="reviews">Most reviews</option>
-                  <option value="distance">Nearest first</option>
-                </select>
+                <SelectMenu
+                  id="shop-filter-sort"
+                  ariaLabel="Sort by"
+                  value={sortBy}
+                  onChange={setSortBy}
+                  options={[
+                    { value: 'rating-desc', label: 'Best rated first' },
+                    { value: 'rating-asc', label: 'Lowest rated first' },
+                    { value: 'reviews', label: 'Most reviews' },
+                    { value: 'distance', label: 'Nearest first' },
+                  ]}
+                />
               </div>
               <div className="md:col-span-2 ui-seg results-view" role="group" aria-label="View">
                 {[
@@ -667,9 +673,13 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                 <div className="cs-sec-head">
                   <label htmlFor="modal-category" className="cs-sec-title"><Store className="h-4 w-4" aria-hidden="true" />Type of shop</label>
                 </div>
-                <select id="modal-category" value={tempCategory} onChange={(e) => setTempCategory(e.target.value)} className="ui-select">
-                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <SelectMenu
+                  id="modal-category"
+                  ariaLabel="Type of shop"
+                  value={tempCategory}
+                  onChange={setTempCategory}
+                  options={CATEGORIES.map((c) => ({ value: c, label: c }))}
+                />
               </section>
 
               <section className="cs-section">
