@@ -10,10 +10,10 @@ import { WHATSAPP_TEMPLATES, DEFAULT_TEMPLATE_ID, getTemplate, fillTemplate } fr
 import MessageImagePicker, { FLYER_VALUE, pictureSrc } from '../whatsapp/MessageImagePicker';
 import { imageCategoryFor, dominantImageCategory } from '../../utils/imageTools';
 import { useContactedShops, contactedAt, contactedAgo, refreshContacted } from '../../services/contactedShops';
+import { useDailyLimit, dailyLimitMessage } from '../../services/dailyLimit';
 
 const GAP_BETWEEN_MESSAGES_MS = 2000; // a short pause between contacts keeps WhatsApp happy
 const SECONDS_PER_CONTACT = 4;        // rough, for the "about N minutes left" hint
-const DAILY_LIMIT_HINT = 200;
 
 const shopKey = (s, i) => String(s.id ?? s.external_place_id ?? `${s.name}_${i}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -45,6 +45,8 @@ function StatusMark({ status }) {
 export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = [], onBroadcastComplete, onlyNoWebsiteDefault = false }) {
   const [step, setStep] = useState('select'); // 'select' | 'message' | 'send'
   const contactedState = useContactedShops(); // shops already messaged inside the repeat window (30 days)
+  const dailyLimit = useDailyLimit();          // how many messages can still go out today
+  const canPick = Math.max(0, dailyLimit.remaining);
   const [selected, setSelected] = useState(() => new Set());
   const [query, setQuery] = useState('');
   const [onlyNoSite, setOnlyNoSite] = useState(onlyNoWebsiteDefault);
@@ -154,7 +156,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
         if (err?.skipped) {
           patch(key, { status: 'skipped', note: String(err.message || '').replace('Message not sent: ', '') });
           if (err.reason === 'daily_limit_reached') {
-            setHaltNote('The daily sending limit has been reached, so the rest are still waiting. Continue tomorrow.');
+            setHaltNote(`${dailyLimitMessage()} The shops that were not sent yet are still waiting.`);
             break;
           }
         } else {
@@ -195,15 +197,20 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
 
   const toggle = (key) => setSelected((prev) => {
     const next = new Set(prev);
-    if (next.has(key)) next.delete(key); else next.add(key);
+    if (next.has(key)) next.delete(key);
+    else if (next.size < canPick) next.add(key);   // never pick more shops than today's limit allows
     return next;
   });
   // Shops messaged inside the repeat window cannot be picked: the server would skip them anyway.
   const pickable = visible.filter((c) => !c.contactedAt);
   const alreadyContactedCount = contacts.filter((c) => c.contactedAt).length;
-  const selectFirst = (n) => setSelected(new Set(pickable.slice(0, n).map((c) => c.key)));
-  const selectAllVisible = () => setSelected((prev) => new Set([...prev, ...pickable.map((c) => c.key)]));
-  const allVisibleSelected = pickable.length > 0 && pickable.every((c) => selected.has(c.key));
+  const selectFirst = (n) => setSelected(new Set(pickable.slice(0, Math.min(n, canPick)).map((c) => c.key)));
+  const selectAllVisible = () => setSelected((prev) => {
+    const next = new Set(prev);
+    for (const c of pickable) { if (next.size >= canPick) break; next.add(c.key); }
+    return next;
+  });
+  const allVisibleSelected = pickable.length > 0 && pickable.slice(0, canPick).every((c) => selected.has(c.key)) && canPick > 0;
 
   const pickTemplate = (t) => {
     setTemplateId(t.id);
@@ -287,7 +294,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                   Only shops without a website
                 </button>
                 <button type="button" className="qs-pick" onClick={allVisibleSelected ? () => setSelected(new Set()) : selectAllVisible}>
-                  {allVisibleSelected ? 'Clear all' : `Select all ${pickable.length}`}
+                  {allVisibleSelected ? 'Clear all' : `Select all ${Math.min(pickable.length, canPick)}`}
                 </button>
                 <span className="qs-first">
                   <label htmlFor="bulk-firstn">First</label>
@@ -302,6 +309,9 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
               <p className="qs-count" aria-live="polite">
                 <span className="qs-count-badge"><Users className="h-3.5 w-3.5" aria-hidden="true" />{selectedCount} selected</span>
                 <span>{visible.length} shown · {contacts.length} shops have a phone number{alreadyContactedCount > 0 && ` · ${alreadyContactedCount} already contacted`}</span>
+                {dailyLimit.available && dailyLimit.limit > 0 && (
+                  <span className={`qs-today ${dailyLimit.reached ? 'is-over' : ''}`}>Today: {dailyLimit.sentToday} of {dailyLimit.limit} sent{!dailyLimit.reached && Number.isFinite(dailyLimit.remaining) ? ` · ${dailyLimit.remaining} left` : ''}</span>
+                )}
               </p>
             </div>
 
@@ -317,7 +327,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                 return (
                   <li key={c.key}>
                     <label className={`qs-row ${checked ? 'is-checked' : ''} ${c.contactedAt ? 'is-contacted' : ''}`} title={c.contactedAt ? `You already messaged this shop in the last ${contactedState.days} days` : undefined}>
-                      <input type="checkbox" checked={checked} disabled={Boolean(c.contactedAt)} onChange={() => toggle(c.key)} className="qs-check" />
+                      <input type="checkbox" checked={checked} disabled={Boolean(c.contactedAt) || (!checked && selectedCount >= canPick)} onChange={() => toggle(c.key)} className="qs-check" />
                       <span className="qs-avatar" aria-hidden="true">{(c.name || '?').trim().charAt(0).toUpperCase()}</span>
                       <span className="min-w-0 flex-1">
                         <span className="qs-name">{c.name}</span>
@@ -332,10 +342,14 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
             </ul>
 
             <div className="qs-foot">
-              <p className="text-sm" style={{ color: selectedCount > DAILY_LIMIT_HINT ? 'var(--ui-warning)' : 'var(--ui-muted)' }}>
-                {selectedCount > DAILY_LIMIT_HINT ? `The daily limit is about ${DAILY_LIMIT_HINT} messages; the rest will wait.` : `Shops you contacted in the last ${contactedState.days} days are skipped.`}
+              <p className="text-sm" style={{ color: dailyLimit.reached || selectedCount >= canPick ? 'var(--ui-warning)' : 'var(--ui-muted)' }}>
+                {dailyLimit.reached
+                  ? dailyLimitMessage()
+                  : selectedCount >= canPick && Number.isFinite(canPick)
+                    ? `That is all you can send today (limit ${dailyLimit.limit}). The rest can go tomorrow.`
+                    : `Shops you contacted in the last ${contactedState.days} days are skipped.`}
               </p>
-              <button type="button" disabled={selectedCount === 0} onClick={() => setStep('message')} className="ui-btn ui-btn-primary qs-next">
+              <button type="button" disabled={selectedCount === 0 || dailyLimit.reached} onClick={() => setStep('message')} className="ui-btn ui-btn-primary qs-next">
                 Next: choose the message ({selectedCount})
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </button>

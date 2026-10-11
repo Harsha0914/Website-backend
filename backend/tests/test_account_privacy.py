@@ -237,3 +237,62 @@ def test_a_shop_can_be_contacted_again_after_30_days_and_then_the_window_restart
     assert contacted_keys() == []                                                              # past 30 days: Send Message again
     _outbound(db_session, conv, "sent", datetime.utcnow())                                     # messaged again
     assert contacted_keys() == ["9876500001"]                                                  # Already Contacted for another 30 days
+
+
+# ─── the daily sending limit (per account, per Indian day) ───────────────────
+def _really_sent(monkeypatch):
+    monkeypatch.setattr("app.services.whatsapp_guard.delivery_status", lambda ok, raw=None: "sent")
+    monkeypatch.setattr("app.routers.ai_whatsapp_hub.delivery_status", lambda ok, raw=None: "sent")
+
+
+def _send_to(client, user, phone):
+    res = client.post("/api/ai-whatsapp/broadcast-all", headers=_hdr(user), json={
+        "shops": [{"name": "Shop " + phone[-4:], "phone": phone}], "custom_message": "hi", "include_flyer": False})
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def test_the_daily_limit_is_50_by_default():
+    from app.config import settings
+    assert settings.WHATSAPP_DAILY_SEND_LIMIT == 50
+
+
+def test_the_daily_limit_stops_an_account_and_says_so(client, alice, bob, monkeypatch):
+    from app.config import settings
+    _really_sent(monkeypatch)
+    monkeypatch.setattr(settings, "WHATSAPP_DAILY_SEND_LIMIT", 2)
+
+    first = _send_to(client, alice, "919800000001")
+    assert first["results"][0]["status"] == "sent" and first["daily_limit"]["sent_today"] == 1 and first["daily_limit"]["remaining"] == 1
+    second = _send_to(client, alice, "919800000002")
+    assert second["daily_limit"] == {**second["daily_limit"], "sent_today": 2, "remaining": 0, "reached": True, "limit": 2}
+
+    third = _send_to(client, alice, "919800000003")
+    assert third["results"][0]["status"] == "skipped" and third["results"][0]["error"] == "daily_limit_reached"
+    assert third["daily_limit"]["reached"] is True
+
+    status = client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(alice)).json()
+    assert status["reached"] is True and status["sent_today"] == 2 and status["resets_at"]
+
+    # the limit belongs to each account: Bob is not blocked by Alice's sending
+    assert client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(bob)).json()["sent_today"] == 0
+    assert _send_to(client, bob, "919800000004")["results"][0]["status"] == "sent"
+
+
+def test_yesterdays_messages_do_not_count_after_midnight_in_india(client, db_session, alice, monkeypatch):
+    from datetime import datetime, timedelta
+    from app.config import settings
+    from app.services.whatsapp_guard import ist_day_start_utc
+    monkeypatch.setattr(settings, "WHATSAPP_DAILY_SEND_LIMIT", 1)
+    conv = WhatsAppConversation(owner_id=alice.id, phone_number="919800000009", shop_name="Old")
+    db_session.add(conv)
+    db_session.commit()
+    db_session.refresh(conv)
+    _outbound(db_session, conv, "sent", ist_day_start_utc() - timedelta(minutes=1))     # 11:59 PM yesterday (IST)
+    assert client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(alice)).json()["reached"] is False
+    _outbound(db_session, conv, "sent", ist_day_start_utc() + timedelta(minutes=1))     # 12:01 AM today (IST)
+    assert client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(alice)).json()["reached"] is True
+
+
+def test_daily_limit_needs_a_login(client):
+    assert client.get("/api/ai-whatsapp/daily-limit").status_code in (401, 403)

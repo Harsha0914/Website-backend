@@ -26,7 +26,10 @@ const TEMPLATE_ICONS = { 'offer-link': Link2, 'about-company': Building2 };
  *   Step 2: preview and (optionally) edit the message, then send it to this shop only.
  *   Step 3: confirmation.
  */
+import { useDailyLimit, dailyLimitMessage } from '../../services/dailyLimit';
+
 export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent }) {
+  const dailyLimit = useDailyLimit();
   const shopName = business?.name || 'your shop';
   const phoneDigits = business ? formatPhoneNumber(business.phone || business.phone_number) : '';
   const phoneDisplay = phoneDigits ? `+${phoneDigits}` : '';
@@ -297,6 +300,12 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
                   <span>This shop has no valid phone number, so it cannot be messaged.</span>
                 </div>
               )}
+              {dailyLimit.reached && (
+                <div className="ui-notice ui-notice-warning" role="alert">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                  <span><strong>Daily limit reached.</strong> {dailyLimitMessage()}</span>
+                </div>
+              )}
               {error && (
                 <div className="ui-notice ui-notice-error" role="alert">
                   <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
@@ -330,9 +339,9 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
         {step === 'edit' && (
           <div className="flex flex-wrap items-center justify-end gap-2 px-5 py-4 border-t" style={{ borderColor: 'var(--ui-border)' }}>
             <button type="button" onClick={onClose} disabled={sending} className="ui-btn ui-btn-secondary">Cancel</button>
-            <button type="button" onClick={handleSend} disabled={!message.trim() || sending || !phoneDigits} className="ui-btn ui-btn-success">
+            <button type="button" onClick={handleSend} disabled={!message.trim() || sending || !phoneDigits || dailyLimit.reached} className="ui-btn ui-btn-success">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
-              {sending ? 'Sending…' : 'Send WhatsApp message'}
+              {sending ? 'Sending…' : 'Send Message'}
             </button>
           </div>
         )}

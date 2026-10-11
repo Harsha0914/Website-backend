@@ -1,4 +1,5 @@
 import api from './api';
+import { setDailyLimit, dailyLimitMessage } from './dailyLimit';
 import { fillTemplate, getTemplate } from './whatsappTemplates';
 
 /**
@@ -285,6 +286,8 @@ export async function sendDirectWhatsAppPitch(business, customMessage = null, ov
     template_key: templateKey || undefined,
   });
 
+  if (res.data?.daily_limit) setDailyLimit(res.data.daily_limit, { blocked: res.data?.results?.[0]?.error === 'daily_limit_reached' });
+
   const firstResult = res.data?.results?.[0];
   if (firstResult && firstResult.status === 'error') {
     throw new Error(firstResult.error || 'Failed to send WhatsApp message');
@@ -293,12 +296,14 @@ export async function sendDirectWhatsAppPitch(business, customMessage = null, ov
     const reasons = {
       no_valid_phone: 'this shop has no valid phone number',
       opted_out: 'this number opted out of messages',
-      daily_limit_reached: 'the daily sending limit has been reached',
+      daily_limit_reached: dailyLimitMessage(),
       recently_contacted: 'this shop was contacted recently',
       active_human_conversation: 'a team member is already chatting with this shop',
       duplicate_in_batch: 'duplicate number',
     };
-    const skipErr = new Error(`Message not sent: ${reasons[firstResult.error] || firstResult.error || 'blocked'}`);
+    const skipErr = new Error(firstResult.error === 'daily_limit_reached'
+      ? reasons.daily_limit_reached
+      : `Message not sent: ${reasons[firstResult.error] || firstResult.error || 'blocked'}`);
     skipErr.skipped = true;
     skipErr.reason = firstResult.error;
     throw skipErr;

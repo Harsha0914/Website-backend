@@ -752,6 +752,26 @@ body {
 .finder-tight .finder-summary > div { padding: 6px 12px; }
 .finder-tight .finder-go { min-height: 42px; }
 
+/* ── Daily sending limit ───────────────────────────────────────────────────── */
+.results-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.results-pills .results-source { margin-top: 0; }
+.results-source.is-warn { background: rgba(251, 191, 36, .28); border-color: rgba(251, 191, 36, .7); }
+.qs-today { margin-left: auto; font-weight: 650; color: var(--ui-text-2); }
+.qs-today.is-over { color: var(--ui-warning); }
+.limit-toast {
+  position: fixed; right: 20px; bottom: 24px; z-index: 10000; display: flex; align-items: flex-start; gap: 12px;
+  max-width: min(420px, calc(100vw - 32px)); padding: 14px 14px 14px 16px; color: var(--ui-text);
+  background: var(--ui-surface); border: 1px solid var(--ui-warning); border-left-width: 5px; border-radius: 14px;
+  box-shadow: 0 24px 48px -16px rgba(15, 23, 42, .45); animation: limit-toast-in .25s ease-out;
+}
+@keyframes limit-toast-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.limit-toast strong { display: block; font-size: 0.95rem; }
+.limit-toast p { margin-top: 2px; font-size: 0.86rem; line-height: 1.45; color: var(--ui-text-2); }
+.limit-toast-icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; color: var(--ui-warning); background: var(--ui-warning-soft); border-radius: 10px; }
+.limit-toast button { flex: none; display: grid; place-items: center; width: 28px; height: 28px; color: var(--ui-muted); background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
+.limit-toast button:hover { background: var(--ui-surface-2); }
+@media (max-width: 767px) { .limit-toast { right: 16px; left: 16px; bottom: 84px; max-width: none; } }
+
 /* ── Status badges (always icon/text, never colour alone) ─────────────────── */
 .ui-badge {
   display: inline-flex; align-items: center; gap: 6px;
