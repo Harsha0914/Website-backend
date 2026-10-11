@@ -187,7 +187,7 @@ def _outbound(db, conv, status, when):
     db.commit()
 
 
-def test_recently_contacted_lists_only_my_own_shops_from_the_last_7_days(client, db_session, alice, bob):
+def test_recently_contacted_lists_only_my_own_shops_from_the_last_30_days(client, db_session, alice, bob):
     from datetime import datetime, timedelta
     now = datetime.utcnow()
 
@@ -199,13 +199,13 @@ def test_recently_contacted_lists_only_my_own_shops_from_the_last_7_days(client,
         return c
 
     _outbound(db_session, chat(alice, "919876543210"), "sent", now - timedelta(days=2))
-    _outbound(db_session, chat(alice, "919811122233"), "sent", now - timedelta(days=9))      # too old: can be messaged again
+    _outbound(db_session, chat(alice, "919811122233"), "sent", now - timedelta(days=31))     # window over: can be messaged again
     _outbound(db_session, chat(alice, "919822233344"), "failed", now - timedelta(days=1))    # never left: not contacted
     _outbound(db_session, chat(alice, "919833344455"), "simulated", now - timedelta(days=1)) # test mode: not contacted
     _outbound(db_session, chat(bob, "919844455566"), "sent", now - timedelta(days=1))        # someone else's shop
 
     mine = client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(alice)).json()
-    assert mine["days"] == 7
+    assert mine["days"] == 30
     assert [c["phone_key"] for c in mine["contacted"]] == ["9876543210"]
     assert mine["contacted"][0]["last_sent_at"].startswith(str(now.year))
 
@@ -215,3 +215,25 @@ def test_recently_contacted_lists_only_my_own_shops_from_the_last_7_days(client,
 
 def test_recently_contacted_needs_a_login(client):
     assert client.get("/api/ai-whatsapp/recently-contacted").status_code in (401, 403)
+
+
+def test_a_shop_can_be_contacted_again_after_30_days_and_then_the_window_restarts(client, db_session, alice):
+    """Contacted -> 30 days pass -> can message again -> contacted again for another 30 days."""
+    from datetime import datetime, timedelta
+    conv = WhatsAppConversation(owner_id=alice.id, phone_number="919876500001", shop_name="Loop Shop")
+    db_session.add(conv)
+    db_session.commit()
+    db_session.refresh(conv)
+
+    def contacted_keys():
+        return [c["phone_key"] for c in client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(alice)).json()["contacted"]]
+
+    assert contacted_keys() == []                                                              # never messaged: button says Send Message
+    _outbound(db_session, conv, "sent", datetime.utcnow() - timedelta(days=29, hours=23))
+    assert contacted_keys() == ["9876500001"]                                                  # day 29: still Already Contacted
+    db_session.query(WhatsAppMessage).delete()
+    db_session.commit()
+    _outbound(db_session, conv, "sent", datetime.utcnow() - timedelta(days=30, hours=1))
+    assert contacted_keys() == []                                                              # past 30 days: Send Message again
+    _outbound(db_session, conv, "sent", datetime.utcnow())                                     # messaged again
+    assert contacted_keys() == ["9876500001"]                                                  # Already Contacted for another 30 days

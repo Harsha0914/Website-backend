@@ -598,7 +598,7 @@ def _public_picture_url(request, name: str, square: bool = False) -> str:
 @router.get("/recently-contacted")
 def recently_contacted(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """
-    Shops THIS account has already messaged inside the repeat-contact window (7 days by default), with the time of the
+    Shops THIS account has already messaged inside the repeat-contact window (30 days by default), with the time of the
     latest message. The results pages use it to show "Already contacted" instead of the send button. It only ever
     looks at the signed-in account's own chats, so it never reveals what another account did.
     """
