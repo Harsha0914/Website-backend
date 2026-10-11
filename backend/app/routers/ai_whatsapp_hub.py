@@ -604,7 +604,10 @@ def recently_contacted(db: Session = Depends(get_db), current_user=Depends(get_c
     """
     from datetime import timedelta
     from sqlalchemy import func
+    from app.services.chat_durability import restore_for_user
     from app.services.whatsapp_guard import _DELIVERED_STATUSES, phone_key
+
+    restore_for_user(db, current_user)  # after a redeploy the history is in MongoDB, not yet in SQL
 
     days = int(settings.WHATSAPP_REPEAT_COOLDOWN_DAYS or 0)
     if days <= 0:
@@ -678,6 +681,8 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
       * every pitch carries an opt-out line;
       * each message is recorded with its TRUE delivery status.
     """
+    from app.services.chat_durability import restore_for_user
+    restore_for_user(db, current_user)  # so the 30-day repeat check sees messages sent before the last redeploy
     if not payload.shops:
         raise HTTPException(status_code=400, detail="No shops provided for broadcast.")
     max_batch = int(settings.WHATSAPP_MAX_BROADCAST_BATCH or 0)
