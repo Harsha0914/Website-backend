@@ -352,7 +352,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   <span className="results-source"><MapPin className="h-3.5 w-3.5" aria-hidden="true" />Shop details from {sourceLabel}</span>
                 )}
                 {dailyLimit.available && dailyLimit.limit > 0 && (
-                  <span className={`results-source ${dailyLimit.reached ? 'is-warn' : ''}`}>
+                  <span className={`results-source ${dailyLimit.reached || (dailyLimit.warnAt > 0 && dailyLimit.sentToday >= dailyLimit.warnAt) ? 'is-warn' : ''}`}>
                     <Send className="h-3.5 w-3.5" aria-hidden="true" />
                     Today: {dailyLimit.sentToday} of {dailyLimit.limit} messages sent{dailyLimit.reached ? ' · limit reached' : ''}
                   </span>
