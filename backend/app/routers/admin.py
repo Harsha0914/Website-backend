@@ -30,6 +30,13 @@ def _guard_last_admin(db: Session, user: User, req: Optional[AdminUserUpdate]) -
         raise HTTPException(status_code=400, detail="At least one active administrator must remain.")
 
 
+@router.get("/message-usage")
+def message_usage(db: Session = Depends(get_db)):
+    """Messages sent by each account and the total across all accounts (admins only; the router requires an admin)."""
+    from app.services.message_usage import usage_report
+    return usage_report(db)
+
+
 @router.get("/statistics")
 def get_statistics(db: Session = Depends(get_db)):
     total_users = db.query(User).count()

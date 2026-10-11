@@ -6,6 +6,7 @@ import {
   Building2,
   FileSpreadsheet,
   FileCode2,
+  MessageSquare,
   ShieldCheck,
   LogOut,
   ArrowLeft,
@@ -28,6 +29,7 @@ export function AdminLayout() {
     { to: '/admin/dashboard', label: 'Overview', icon: LayoutDashboard, end: true },
     { to: '/admin/businesses', label: 'Businesses', icon: Building2 },
     { to: '/admin/users', label: 'User Accounts', icon: Users },
+    { to: '/admin/messages', label: 'Message Counts', icon: MessageSquare },
     { to: '/admin/website-requests', label: 'Website Requests', icon: FileCode2 },
     { to: '/admin/reports', label: 'Reports & Export', icon: FileSpreadsheet },
   ];

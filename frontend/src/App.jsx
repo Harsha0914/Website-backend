@@ -27,6 +27,7 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminBusinesses from './pages/admin/AdminBusinesses';
 import AdminWebsiteRequests from './pages/admin/AdminWebsiteRequests';
 import AdminReports from './pages/admin/AdminReports';
+import AdminMessages from './pages/admin/AdminMessages';
 
 import { useEffect } from 'react';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
@@ -159,6 +160,7 @@ export default function App() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="businesses" element={<AdminBusinesses />} />
         <Route path="website-requests" element={<AdminWebsiteRequests />} />
+        <Route path="messages" element={<AdminMessages />} />
         <Route path="reports" element={<AdminReports />} />
       </Route>
 
