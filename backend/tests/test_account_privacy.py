@@ -302,3 +302,53 @@ def test_yesterdays_messages_do_not_count_after_midnight_in_india(client, db_ses
 
 def test_daily_limit_needs_a_login(client):
     assert client.get("/api/ai-whatsapp/daily-limit").status_code in (401, 403)
+
+
+# ─── the admin's view: every account's count and the total ───────────────────
+def test_admin_sees_each_accounts_count_and_the_total(client, db_session, alice, bob, boss, monkeypatch):
+    _really_sent(monkeypatch)
+    for n in range(9):
+        _send_to(client, alice, f"91980010{n:04d}")          # Alice sends 9
+    for n in range(5):
+        _send_to(client, bob, f"91980020{n:04d}")            # Bob sends 5
+
+    report = client.get("/api/admin/message-usage", headers=_hdr(boss))
+    assert report.status_code == 200, report.text
+    data = report.json()
+    by_email = {a["email"]: a for a in data["accounts"]}
+    assert by_email["alice@example.test"]["sent_today"] == 9 and by_email["alice@example.test"]["sent_all_time"] == 9
+    assert by_email["bob@example.test"]["sent_today"] == 5 and by_email["bob@example.test"]["shops_contacted"] == 5
+    assert by_email["boss@example.test"]["sent_today"] == 0                                  # an account that sent nothing is listed with 0
+    assert data["totals"]["sent_today"] == 14 and data["totals"]["sent_all_time"] == 14      # 9 + 5
+    assert data["totals"]["accounts_total"] == 3 and data["totals"]["accounts_sent_today"] == 2
+    assert [a["email"] for a in data["accounts"]][:2] == ["alice@example.test", "bob@example.test"]   # busiest first
+    assert data["daily_limit"] == 100 and by_email["alice@example.test"]["limit_reached"] is False
+
+
+def test_the_total_goes_up_by_itself_when_anyone_sends(client, alice, boss, monkeypatch):
+    _really_sent(monkeypatch)
+    total = lambda: client.get("/api/admin/message-usage", headers=_hdr(boss)).json()["totals"]["sent_today"]  # noqa: E731
+    assert total() == 0
+    _send_to(client, alice, "919800030001")
+    assert total() == 1
+    _send_to(client, alice, "919800030002")
+    assert total() == 2
+
+
+def test_failed_and_test_mode_messages_are_not_counted_and_old_days_stay_in_the_all_time_total(client, db_session, alice, boss):
+    from datetime import timedelta
+    from app.services.whatsapp_guard import ist_day_start_utc
+    conv = WhatsAppConversation(owner_id=alice.id, phone_number="919800040001", shop_name="S")
+    db_session.add(conv)
+    db_session.commit()
+    db_session.refresh(conv)
+    _outbound(db_session, conv, "failed", ist_day_start_utc() + timedelta(minutes=5))
+    _outbound(db_session, conv, "simulated", ist_day_start_utc() + timedelta(minutes=6))
+    _outbound(db_session, conv, "sent", ist_day_start_utc() - timedelta(days=3))
+    me = {a["email"]: a for a in client.get("/api/admin/message-usage", headers=_hdr(boss)).json()["accounts"]}["alice@example.test"]
+    assert me["sent_today"] == 0 and me["sent_7_days"] == 1 and me["sent_all_time"] == 1
+
+
+def test_only_an_admin_can_see_the_counts(client, alice):
+    assert client.get("/api/admin/message-usage", headers=_hdr(alice)).status_code in (401, 403)
+    assert client.get("/api/admin/message-usage").status_code in (401, 403)
