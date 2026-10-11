@@ -108,6 +108,8 @@ def get_nearby_businesses(
     The response `total` equals the number of businesses that passed both filters.
     No fake / padded data is ever included.
     """
+    from app.services.chat_durability import wait_for_businesses
+    wait_for_businesses()  # after a redeploy, let the shops come back from MongoDB before searching
     clean_cat = str(category).strip() if (category is not None and isinstance(category, str)) else None
     if clean_cat in ("", "None", "null", "All Categories", "All Shops"):
         clean_cat = None

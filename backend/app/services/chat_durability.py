@@ -6,6 +6,12 @@ bundled file each time, so chats created since would vanish. MongoDB is already 
 accounts), so every conversation and message is copied there as it is saved, and an account's chats are
 restored from it the first time that account opens its chat list after a restart.
 
+Also kept safe the same way:
+  * the Google Maps shops the app has found (the "businesses" collection): every new or changed shop is copied
+    to MongoDB, and shops missing from the SQL database are restored from it at startup, so a redeploy no longer
+    throws away what was found (and Google is not asked again for the same shops);
+  * a small daily record per account (messages sent, replies, shops contacted for each Indian day).
+
 Rules:
   * It can never break the app: every MongoDB call is wrapped; if MongoDB is not configured or is down the app
     simply behaves as before.
@@ -18,7 +24,7 @@ import logging
 import queue
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 # pyrefly: ignore [missing-import]
@@ -26,6 +32,7 @@ from sqlalchemy import event
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 
+from app.models.business import Business, WebsiteQuality, WebsiteStatus
 from app.models.message_image import MessageImage
 from app.models.user import User
 from app.models.whatsapp import (
@@ -40,6 +47,8 @@ logger = logging.getLogger("chat_durability")
 CONV_COLL = "whatsapp_chat_conversations"
 MSG_COLL = "whatsapp_chat_messages"
 IMG_COLL = "whatsapp_message_images"
+BIZ_COLL = "businesses"                  # the same collection the search already writes Google Maps shops to
+DAILY_COLL = "whatsapp_daily_stats"      # one document per account per Indian day
 
 CONV_FIELDS = [
     "phone_number", "shop_name", "owner_name", "auto_ai_enabled", "lead_status", "lead_score",
@@ -50,6 +59,12 @@ CONV_FIELDS = [
 MSG_FIELDS = [
     "sender_name", "message_body", "intent", "confidence_score", "ai_generated", "tokens_used", "status",
     "is_read", "external_message_id", "created_at",
+]
+
+BIZ_FIELDS = [
+    "name", "category", "address", "short_address", "google_maps_uri", "latitude", "longitude", "phone", "website_url",
+    "photo_url", "rating", "review_count", "business_status", "opening_hours", "website_score", "last_website_check",
+    "source", "created_at", "updated_at",
 ]
 
 _PENDING = "chat_durability_pending"
@@ -152,6 +167,50 @@ def _msg_doc(msg: WhatsAppMessage, key: str) -> Tuple[str, dict]:
     return uid, doc
 
 
+def _biz_doc(b: Business) -> dict:
+    doc = {f: getattr(b, f) for f in BIZ_FIELDS}
+    for f in ("last_website_check", "created_at", "updated_at"):
+        doc[f] = _ms(doc[f])
+    doc["external_place_id"] = b.external_place_id
+    doc["website_status"] = _enum_value(b.website_status)
+    doc["website_quality"] = _enum_value(b.website_quality)
+    try:
+        doc["location"] = {"type": "Point", "coordinates": [float(b.longitude), float(b.latitude)]}
+    except (TypeError, ValueError):
+        pass
+    return doc
+
+
+_IST = timedelta(hours=5, minutes=30)
+
+
+def _ist_date(dt: Optional[datetime]) -> Optional[str]:
+    return (dt + _IST).date().isoformat() if dt else None
+
+
+def _daily_doc(session: Session, owner_id: int, email: str, date_key: str) -> Tuple[str, dict]:
+    """Messages sent / replies received / shops contacted for one account on one Indian day."""
+    from sqlalchemy import distinct, func
+    day = datetime.fromisoformat(date_key)
+    start = day - _IST                 # midnight IST as the naive UTC time the database stores
+    end = start + timedelta(days=1)
+    base = (
+        session.query(WhatsAppMessage)
+        .join(WhatsAppConversation, WhatsAppConversation.id == WhatsAppMessage.conversation_id)
+        .filter(WhatsAppConversation.owner_id == owner_id, WhatsAppMessage.created_at >= start, WhatsAppMessage.created_at < end)
+    )
+    delivered = ("sent", "delivered", "read")
+    out = base.filter(WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND, WhatsAppMessage.status.in_(delivered))
+    sent = out.count()
+    received = base.filter(WhatsAppMessage.direction == WhatsAppDirection.INBOUND).count()
+    contacted = out.with_entities(func.count(distinct(WhatsAppMessage.conversation_id))).scalar() or 0
+    key = f"{email}|{date_key}"
+    return key, {
+        "_id": key, "owner_email": email, "date": date_key, "messages_sent": sent,
+        "replies_received": received, "shops_contacted": int(contacted), "updated_at": datetime.utcnow(),
+    }
+
+
 # ─── background writer ───────────────────────────────────────────────────────
 def _apply(op: str, coll: str, _id: str, doc: Optional[dict]) -> None:
     mdb = _db()
@@ -160,6 +219,8 @@ def _apply(op: str, coll: str, _id: str, doc: Optional[dict]) -> None:
     try:
         if op == "upsert":
             mdb[coll].replace_one({"_id": _id}, doc, upsert=True)
+        elif op == "biz":
+            mdb[coll].replace_one({"external_place_id": _id}, doc, upsert=True)
         elif op == "delete":
             mdb[coll].delete_one({"_id": _id})
         elif op == "delete_owner":
@@ -231,6 +292,19 @@ def _collect(session: Session, _ctx) -> None:
                 email = _email_for(session, obj.owner_id)
                 if email:
                     pending.append(("upsert", IMG_COLL, f"{email}|{obj.uid}", _image_doc(obj, email)))
+            elif isinstance(obj, Business) and obj.external_place_id:
+                pending.append(("biz", BIZ_COLL, obj.external_place_id, _biz_doc(obj)))
+        # the daily record of every account/day touched by a message in this save
+        days = set()
+        for obj in list(session.new) + list(session.dirty):
+            if isinstance(obj, WhatsAppMessage) and obj.conversation_id and obj.created_at:
+                conv = session.get(WhatsAppConversation, obj.conversation_id)
+                email = _email_for(session, conv.owner_id) if conv else None
+                if conv and email:
+                    days.add((conv.owner_id, email, _ist_date(obj.created_at)))
+        for owner_id, email, date_key in days:
+            key, doc = _daily_doc(session, owner_id, email, date_key)
+            pending.append(("upsert", DAILY_COLL, key, doc))
         for obj in list(session.deleted):
             if isinstance(obj, WhatsAppMessage) and obj.conversation_id:
                 conv = session.get(WhatsAppConversation, obj.conversation_id)
@@ -410,3 +484,114 @@ def backfill_all(session_factory) -> int:
 
 def start_backfill(session_factory) -> None:
     threading.Thread(target=backfill_all, args=(session_factory,), name="chat-backfill", daemon=True).start()
+
+
+# ─── Google Maps shops: restore after a redeploy, and copy what is only in SQL ────────────────
+_biz_ready = threading.Event()
+_biz_ready.set()   # nothing to wait for unless a sync was started
+
+
+def _parse_enum(enum_cls, value, default):
+    """Old copies stored 'WebsiteStatus.NO_WEBSITE', new ones 'NO_WEBSITE': accept both."""
+    if value is None:
+        return default
+    try:
+        return enum_cls(str(value).split(".")[-1])
+    except ValueError:
+        return default
+
+
+def _from_doc(doc: dict) -> Optional[Business]:
+    if not doc.get("external_place_id") or doc.get("latitude") is None or doc.get("longitude") is None or not doc.get("name"):
+        return None
+    values = {f: doc.get(f) for f in BIZ_FIELDS if doc.get(f) is not None and f not in ("created_at", "updated_at", "last_website_check")}
+    for f in ("created_at", "updated_at", "last_website_check"):
+        if isinstance(doc.get(f), datetime):
+            values[f] = doc[f]
+    return Business(
+        external_place_id=str(doc["external_place_id"]),
+        website_status=_parse_enum(WebsiteStatus, doc.get("website_status"), WebsiteStatus.WEBSITE_UNKNOWN),
+        website_quality=_parse_enum(WebsiteQuality, doc.get("website_quality"), WebsiteQuality.UNANALYZED),
+        **values,
+    )
+
+
+def restore_businesses(session_factory, chunk: int = 500) -> int:
+    """Put shops that are in MongoDB but missing from the SQL database back (idempotent). Returns how many."""
+    mdb = _db()
+    if mdb is None:
+        return 0
+    db = session_factory()
+    restored = 0
+    try:
+        have = {pid for (pid,) in db.query(Business.external_place_id).all()}
+        batch: List[Business] = []
+        db.info[_SKIP] = True   # restoring must not echo the same shops straight back to MongoDB
+        for doc in mdb[BIZ_COLL].find({}):
+            pid = str(doc.get("external_place_id") or "")
+            if not pid or pid in have:
+                continue
+            biz = _from_doc(doc)
+            if biz is None:
+                continue
+            have.add(pid)
+            batch.append(biz)
+            if len(batch) >= chunk:
+                db.add_all(batch)
+                db.commit()
+                restored += len(batch)
+                batch = []
+        if batch:
+            db.add_all(batch)
+            db.commit()
+            restored += len(batch)
+        if restored:
+            logger.warning("[chat_durability] restored %s Google Maps shop(s) from MongoDB", restored)
+    except Exception as err:
+        db.rollback()
+        _warn(f"[chat_durability] shop restore failed: {err}")
+    finally:
+        db.info.pop(_SKIP, None)
+        db.close()
+    return restored
+
+
+def backfill_businesses(session_factory) -> int:
+    """Copy shops that exist only in the SQL database to MongoDB (idempotent): the bundled starter data and old finds."""
+    mdb = _db()
+    if mdb is None:
+        return 0
+    db = session_factory()
+    copied = 0
+    try:
+        known = {str(d.get("external_place_id")) for d in mdb[BIZ_COLL].find({}, {"external_place_id": 1}) if d.get("external_place_id")}
+        for biz in db.query(Business).yield_per(500):
+            if biz.external_place_id and biz.external_place_id not in known:
+                _enqueue(("biz", BIZ_COLL, biz.external_place_id, _biz_doc(biz)))
+                copied += 1
+    except Exception as err:
+        _warn(f"[chat_durability] shop backfill failed: {err}")
+    finally:
+        db.close()
+    return copied
+
+
+def _business_sync(session_factory) -> None:
+    try:
+        restore_businesses(session_factory)
+        backfill_businesses(session_factory)
+    finally:
+        _biz_ready.set()
+
+
+def start_business_sync(session_factory) -> None:
+    """At startup: bring shops back from MongoDB first, then copy anything only SQL has. Runs on a background thread."""
+    if _db() is None:
+        return
+    _biz_ready.clear()
+    threading.Thread(target=_business_sync, args=(session_factory,), name="business-sync", daemon=True).start()
+
+
+def wait_for_businesses(timeout: float = 25.0) -> None:
+    """A search waits (briefly) for the restore so it never fetches again, or double-saves, shops that are coming back."""
+    _biz_ready.wait(timeout)
