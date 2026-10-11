@@ -161,14 +161,10 @@ export default function LoginPage() {
       title="Welcome back"
       subtitle="Sign in to find nearby shops and see which ones need a website."
       footer={
-        <p className="ui-help">
-          New here?{' '}
-          <Link to="/register?role=user" className="font-semibold underline" style={{ color: 'var(--ui-primary-text)' }}>
-            Create an account
-          </Link>
-          <span className="mx-2" aria-hidden="true">·</span>
-          <Link to="/register?role=admin" className="underline">Register as administrator</Link>
-        </p>
+        <div className="auth-switch">
+          <span className="auth-switch-label">New here?</span>
+          <Link to="/register?role=user" className="ui-btn ui-btn-secondary ui-btn-block">Create an account</Link>
+        </div>
       }
     >
       {(validationError || error) && (

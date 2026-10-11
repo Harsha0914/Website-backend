@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import {
-  Store,
   Search,
   List,
   MessageCircle,
@@ -13,6 +12,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import BrandLogo from '../common/BrandLogo';
 
 /**
  * Top navigation.
@@ -69,15 +69,7 @@ export default function Navbar({ quickAction = null }) {
           className="flex items-center gap-2.5 min-w-0"
           aria-label="Website Presence home"
         >
-          <span
-            className="flex h-9 w-9 items-center justify-center rounded-xl"
-            style={{ background: 'var(--ui-primary)', color: 'var(--ui-surface)' }}
-          >
-            <Store className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <span className="truncate text-base font-bold tracking-tight" style={{ color: 'var(--ui-text)' }}>
-            Website Presence
-          </span>
+          <BrandLogo size="md" />
         </Link>
 
         {/* Main links (desktop) */}

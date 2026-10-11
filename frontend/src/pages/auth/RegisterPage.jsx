@@ -123,11 +123,12 @@ export default function RegisterPage() {
 
   return (
     <AuthLayout
+      compact
       title={isAdmin ? 'Create an administrator account' : 'Create your account'}
       subtitle={
         isAdmin
-          ? 'Administrators can manage users, shops and reports. You need the admin secret code.'
-          : 'It takes a minute. Then you can find nearby shops and see which ones need a website.'
+          ? 'You need the admin secret code.'
+          : 'It takes a minute.'
       }
       footer={
         <p className="ui-help">
@@ -137,7 +138,7 @@ export default function RegisterPage() {
       }
     >
       {/* Account type */}
-      <div className="grid grid-cols-2 gap-2 mb-6" role="group" aria-label="Account type">
+      <div className="grid grid-cols-2 gap-2 mb-4" role="group" aria-label="Account type">
         {[
           { id: 'USER', label: 'Member', icon: User },
           { id: 'ADMIN', label: 'Administrator', icon: ShieldCheck },
@@ -148,7 +149,7 @@ export default function RegisterPage() {
             onClick={() => { setRole(id); setValidationError(''); }}
             aria-pressed={role === id}
             className={`ui-chip justify-center ${role === id ? 'ui-chip-active' : ''}`}
-            style={{ minHeight: 44, borderRadius: 12 }}
+            style={{ minHeight: 38, borderRadius: 12 }}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />
             {label}
@@ -169,41 +170,33 @@ export default function RegisterPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-y-2.5" noValidate>
         <div>
           <label htmlFor="reg-username" className="ui-label">Username</label>
-          <input id="reg-username" name="username" type="text" autoComplete="username" value={formData.username} onChange={handleChange} placeholder="At least 3 characters" className="ui-input" />
+          <input id="reg-username" name="username" type="text" autoComplete="username" value={formData.username} onChange={handleChange} className="ui-input" />
         </div>
         <div>
-          <label htmlFor="reg-full-name" className="ui-label">Full name <span className="ui-muted font-normal">(optional)</span></label>
-          <input id="reg-full-name" name="full_name" type="text" autoComplete="name" value={formData.full_name} onChange={handleChange} className="ui-input" />
-        </div>
-        <div>
-          <label htmlFor="reg-email" className="ui-label">E-mail <span className="ui-muted font-normal">(used to reset your password)</span></label>
+          <label htmlFor="reg-email" className="ui-label">E-mail</label>
           <input id="reg-email" name="email" type="email" autoComplete="email" value={formData.email} onChange={handleChange} placeholder="you@example.com" className="ui-input" />
-        </div>
-        <div>
-          <label htmlFor="reg-phone" className="ui-label">Phone <span className="ui-muted font-normal">(optional)</span></label>
-          <input id="reg-phone" name="phone" type="tel" autoComplete="tel" value={formData.phone} onChange={handleChange} className="ui-input" />
         </div>
         <div>
           <label htmlFor="reg-password" className="ui-label">Password</label>
           <input id="reg-password" name="password" type="password" autoComplete="new-password" value={formData.password} onChange={handleChange} className="ui-input" />
-          <p className="ui-help mt-1.5">At least 8 characters, with an upper-case letter and a number.</p>
         </div>
         <div>
           <label htmlFor="reg-confirm" className="ui-label">Repeat password</label>
           <input id="reg-confirm" name="confirm_password" type="password" autoComplete="new-password" value={formData.confirm_password} onChange={handleChange} className="ui-input" />
         </div>
+        <p className="ui-help -mt-1">8+ characters, with a capital letter and a number.</p>
 
         {isAdmin && (
-          <div>
+          <div className="">
             <label htmlFor="admin_code" className="ui-label">Admin secret code</label>
             <input id="admin_code" name="admin_code" type="password" autoComplete="off" value={adminCode} onChange={(e) => setAdminCode(e.target.value)} placeholder="Given to you by the system owner" className="ui-input" />
           </div>
         )}
 
-        <label className="flex items-start gap-3 pt-1 cursor-pointer">
+        <label className="flex items-start gap-3 cursor-pointer">
           <input
             id="agree_terms"
             name="agree_terms"
