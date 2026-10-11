@@ -252,9 +252,15 @@ def _send_to(client, user, phone):
     return res.json()
 
 
-def test_the_daily_limit_is_50_by_default():
+def test_the_daily_limit_is_100_with_a_heads_up_at_50():
     from app.config import settings
-    assert settings.WHATSAPP_DAILY_SEND_LIMIT == 50
+    assert settings.WHATSAPP_DAILY_SEND_LIMIT == 100 and settings.WHATSAPP_DAILY_WARNING_AT == 50
+
+
+def test_the_status_tells_the_app_when_to_warn(client, db_session, alice):
+    status = client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(alice)).json()
+    assert status["limit"] == 100 and status["warn_at"] == 50
+    assert status["sent_today"] == 0 and status["remaining"] == 100 and status["reached"] is False
 
 
 def test_the_daily_limit_stops_an_account_and_says_so(client, alice, bob, monkeypatch):

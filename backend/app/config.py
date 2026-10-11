@@ -116,7 +116,8 @@ class Settings(BaseSettings):
     WHATSAPP_IS_TEST_MODE: bool = False
 
     # WhatsApp automation safety limits
-    WHATSAPP_DAILY_SEND_LIMIT: int = 50            # max messages ONE account can send per Indian day
+    WHATSAPP_DAILY_SEND_LIMIT: int = 100           # max messages ONE account can send per Indian day
+    WHATSAPP_DAILY_WARNING_AT: int = 50            # the app tells the user once this many have been sent today
     WHATSAPP_MAX_BROADCAST_BATCH: int = 50         # max recipients per broadcast request
     WHATSAPP_BROADCAST_DELAY_SECONDS: float = 1.5  # pause between broadcast sends
     WHATSAPP_REPEAT_COOLDOWN_DAYS: int = 30        # no repeat pitch to the same number inside this window

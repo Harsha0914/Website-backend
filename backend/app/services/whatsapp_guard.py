@@ -139,11 +139,12 @@ def outbound_count_today(db: Session, owner_id: int) -> int:
 
 
 def daily_limit_status(db: Session, owner_id: int) -> dict:
-    """{limit, sent_today, remaining, reached, resets_at}: what the app shows about today's sending limit."""
+    """{limit, warn_at, sent_today, remaining, reached, resets_at}: what the app shows about today's sending limit."""
     limit = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
     sent = outbound_count_today(db, owner_id)
     return {
         "limit": limit,
+        "warn_at": int(settings.WHATSAPP_DAILY_WARNING_AT or 0),
         "sent_today": sent,
         "remaining": max(0, limit - sent) if limit > 0 else None,
         "reached": bool(limit > 0 and sent >= limit),
