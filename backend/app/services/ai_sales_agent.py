@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, Tuple, List
 # pyrefly: ignore [missing-import]
 import requests
+from app.services.gemini_client import gemini_generate
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 # pyrefly: ignore [missing-import]
@@ -701,13 +702,7 @@ ONLY return the exact message ready to send to the business owner."""
 
     # 2. LLM Powered Response (Google Gemini API)
     if not use_rule_based and settings.GEMINI_API_KEY and settings.GEMINI_API_KEY.strip():
-        try:
-            genai.configure(api_key=settings.GEMINI_API_KEY.strip())
-            model = genai.GenerativeModel(
-                model_name=(getattr(settings, "GEMINI_MODEL", "") or "gemini-2.5-flash").strip(),
-                system_instruction=master_system_prompt
-            )
-            prompt_input = f"""<history>
+        prompt_input = f"""<history>
 {conversation_history_txt}
 </history>
 
@@ -716,13 +711,9 @@ ONLY return the exact message ready to send to the business owner."""
 </owner_message>
 
 Generate the next WhatsApp response:"""
-
-            resp = model.generate_content(prompt_input)
-            vetted = _vet(resp.text) if (resp and resp.text) else None
-            if vetted:
-                return vetted, False, None
-        except Exception as e:
-            print(f"Gemini API sales response exception: {e}. Using rule fallback.")
+        vetted = _vet(gemini_generate(prompt_input, master_system_prompt, max_tokens=300))
+        if vetted:
+            return vetted, False, None
 
     # No usable LLM answer: the rule-based templates are English only, so owners writing in
     # Telugu / Hindi get a polite bilingual acknowledgement and a human takes over.

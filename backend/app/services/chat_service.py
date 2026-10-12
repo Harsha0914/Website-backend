@@ -1,4 +1,5 @@
 # pyrefly: ignore [missing-import]
+from app.services.gemini_client import gemini_generate
 import google.generativeai as genai
 from typing import List, Dict, Any
 from app.config import settings
@@ -118,9 +119,6 @@ def generate_ai_response(
     # 2. Try Gemini AI if configured
     if settings.GEMINI_API_KEY and not settings.USE_RULE_BASED_CHAT:
         try:
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel((getattr(settings, "GEMINI_MODEL", "") or "gemini-2.5-flash").strip())
-
             system_instruction = (
                 f"You are the official AI Website Consultant for 'Lexon IT' (Website Presence Detection & Modern Web Design Company). "
                 f"You are chatting on WhatsApp with the owner/manager of '{name}', which is a '{cat}'. "
@@ -135,9 +133,9 @@ def generate_ai_response(
                 prompt += f"{msg['sender']}: {msg['text']}\n"
             prompt += f"Shop Owner: {user_message}\nLexon IT AI Consultant:"
 
-            response = model.generate_content(prompt)
-            if response and response.text:
-                return response.text.strip()
+            answer = gemini_generate(prompt, max_tokens=400)
+            if answer:
+                return answer
         except Exception as e:
             print("Gemini API error in chat_service:", e)
 
