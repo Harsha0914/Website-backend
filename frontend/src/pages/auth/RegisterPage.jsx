@@ -125,20 +125,15 @@ export default function RegisterPage() {
     <AuthLayout
       compact
       title={isAdmin ? 'Create an administrator account' : 'Create your account'}
-      subtitle={
-        isAdmin
-          ? 'You need the admin secret code.'
-          : 'It takes a minute.'
-      }
       footer={
-        <p className="ui-help">
-          Already have an account?{' '}
-          <Link to="/login" className="font-semibold underline" style={{ color: 'var(--ui-primary-text)' }}>Sign in</Link>
-        </p>
+        <div className="auth-switch">
+          <span className="auth-switch-label">Already have an account?</span>
+          <Link to="/login" className="ui-btn ui-btn-secondary ui-btn-block">Sign in</Link>
+        </div>
       }
     >
       {/* Account type */}
-      <div className="grid grid-cols-2 gap-2 mb-4" role="group" aria-label="Account type">
+      <div className="seg mb-4" role="group" aria-label="Account type">
         {[
           { id: 'USER', label: 'Member', icon: User },
           { id: 'ADMIN', label: 'Administrator', icon: ShieldCheck },
@@ -148,8 +143,7 @@ export default function RegisterPage() {
             type="button"
             onClick={() => { setRole(id); setValidationError(''); }}
             aria-pressed={role === id}
-            className={`ui-chip justify-center ${role === id ? 'ui-chip-active' : ''}`}
-            style={{ minHeight: 38, borderRadius: 12 }}
+            className={`seg-btn ${role === id ? 'is-active' : ''}`}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />
             {label}
@@ -196,7 +190,7 @@ export default function RegisterPage() {
           </div>
         )}
 
-        <label className="flex items-start gap-3 cursor-pointer">
+        <label className="flex items-center gap-3 cursor-pointer auth-terms">
           <input
             id="agree_terms"
             name="agree_terms"
@@ -206,7 +200,7 @@ export default function RegisterPage() {
               setAgreeTerms(e.target.checked);
               if (validationError.toLowerCase().includes('terms')) setValidationError('');
             }}
-            className="mt-1 h-5 w-5 rounded"
+            className="h-5 w-5 rounded"
             style={{ accentColor: 'var(--ui-primary)' }}
           />
           <span className="text-sm" style={{ color: 'var(--ui-text-2)' }}>
