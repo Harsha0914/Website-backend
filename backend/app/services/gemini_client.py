@@ -16,7 +16,7 @@ _BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
 def gemini_model() -> str:
-    return (getattr(settings, "GEMINI_MODEL", "") or "gemini-2.5-flash").strip()
+    return (getattr(settings, "GEMINI_MODEL", "") or "gemini-3.8-flash").strip()
 
 
 def gemini_generate(user_text: str, system_text: str = "", max_tokens: int = 400, temperature: float = 0.7) -> Optional[str]:
@@ -24,7 +24,8 @@ def gemini_generate(user_text: str, system_text: str = "", max_tokens: int = 400
     if not key:
         return None
     model = gemini_model()
-    config = {"temperature": temperature, "maxOutputTokens": max_tokens}
+    # Newer models spend part of this budget on thinking before they answer, so leave plenty of room; the prompt keeps replies short.
+    config = {"temperature": temperature, "maxOutputTokens": max(max_tokens, 1500)}
     if "2.5" in model:
         config["thinkingConfig"] = {"thinkingBudget": 0}   # answer straight away; thinking tokens would eat the reply budget
     body = {"contents": [{"role": "user", "parts": [{"text": user_text}]}], "generationConfig": config}
