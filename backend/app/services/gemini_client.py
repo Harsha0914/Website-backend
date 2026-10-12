@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+import time
+
 import requests
 
 from app.config import settings
@@ -31,11 +33,16 @@ def gemini_generate(user_text: str, system_text: str = "", max_tokens: int = 400
     body = {"contents": [{"role": "user", "parts": [{"text": user_text}]}], "generationConfig": config}
     if system_text:
         body["system_instruction"] = {"parts": [{"text": system_text}]}
-    try:
-        res = requests.post(f"{_BASE}/{model}:generateContent", headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=body, timeout=15)
-    except Exception as err:
-        print(f"[Gemini] request failed: {type(err).__name__}")
-        return None
+    res = None
+    for attempt in range(3):            # Google sometimes answers 503 "high demand" for a moment: try again shortly
+        try:
+            res = requests.post(f"{_BASE}/{model}:generateContent", headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=body, timeout=15)
+        except Exception as err:
+            print(f"[Gemini] request failed: {type(err).__name__}")
+            return None
+        if res.status_code not in (429, 500, 503) or attempt == 2:
+            break
+        time.sleep(1.5 * (attempt + 1))
     if res.status_code != 200:
         try:
             reason = (res.json().get("error") or {}).get("message") or res.text

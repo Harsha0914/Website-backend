@@ -45,6 +45,8 @@ WELCOME_REPLY = (
 )
 
 
+ACK_REPLY = "Thank you! 😊 Let us know whenever you have a question about your website. \u2014 Team Lexon IT"
+
 DEMO_LINK = "https://easybillbro.com/"
 
 PRICING_REPLY = (
@@ -115,8 +117,8 @@ DEMO_REPLY = (
     "Team Lexon IT"
 )
 
-_CAFE_WORDS = r"cafes?|cafeteria|coffee|chai"
-_FOOD_WORDS = r"restaurants?|biryani|dhaba|tiffins?|food|mess|canteen|dining|dine|hotel"
+_CAFE_WORDS = r"cafes?|caffe|cafeteria|coffee|cofee|chai"
+_FOOD_WORDS = r"restaurants?|restaurent|resturants?|restarants?|restrant|biryani|dhaba|tiffins?|food|mess|canteen|dining|dine|hotel"
 
 
 def _food_type(text: str) -> Optional[str]:
@@ -151,8 +153,10 @@ def scripted_reply(incoming: str, intent, category: str, history: str) -> Option
         return CAFE_INQUIRY_REPLY
     if needs_site and _food_type(text) == "restaurant":
         return RESTAURANT_INQUIRY_REPLY
-    if intent == AIIntent.GREETING:
-        return WELCOME_REPLY
+    if intent == AIIntent.GREETING or needs_site:
+        return WELCOME_REPLY          # a greeting, or "I need a website" without saying what kind of business
+    if re.fullmatch(r"\s*(ok+a?y?|okk+|k|kk|thanks?|thank you|thx|fine|cool|great|nice|good)\W*", text):
+        return ACK_REPLY
     return None
 
 
@@ -589,12 +593,13 @@ def generate_ai_sales_response(
     # The approved ready-made replies go out first; the same reply is never sent twice in a row, so a follow-up goes to the AI.
     ready = scripted_reply(incoming_message, intent, category, conversation_history_txt)
     if ready:
-        already = db.query(WhatsAppMessage.id).filter(
-            WhatsAppMessage.conversation_id == conversation.id,
-            WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
-            WhatsAppMessage.message_body == ready,
-        ).first()
-        if not already:
+        last_two = [
+            m.message_body for m in db.query(WhatsAppMessage.message_body).filter(
+                WhatsAppMessage.conversation_id == conversation.id,
+                WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
+            ).order_by(WhatsAppMessage.created_at.desc()).limit(2).all()
+        ]
+        if ready not in last_two:          # the same message is never sent twice in a row
             return ready, False, None
 
     master_system_prompt = f"""You are an AI WhatsApp sales assistant for a website development agency.
