@@ -368,3 +368,33 @@ def test_failed_and_test_mode_messages_are_not_counted_and_old_days_stay_in_the_
 def test_only_an_admin_can_see_the_counts(client, alice):
     assert client.get("/api/admin/message-usage", headers=_hdr(alice)).status_code in (401, 403)
     assert client.get("/api/admin/message-usage").status_code in (401, 403)
+
+
+def test_the_shared_limit_counts_contacts_not_messages(client, db_session, alice, bob, monkeypatch):
+    from datetime import timedelta
+    from app.config import settings
+    from app.services.whatsapp_guard import ist_day_start_utc
+    monkeypatch.setattr(settings, "WHATSAPP_DAILY_SEND_LIMIT", 3)
+    now = ist_day_start_utc() + timedelta(hours=3)
+
+    def send(owner, phone, times):
+        conv = WhatsAppConversation(owner_id=owner.id, phone_number=phone, shop_name=phone)
+        db_session.add(conv)
+        db_session.commit()
+        db_session.refresh(conv)
+        for _ in range(times):
+            _outbound(db_session, conv, "sent", now)
+
+    send(alice, "919800777001", 5)       # one contact, 5 messages: counts as 1
+    send(bob, "919800777001", 2)         # the same contact messaged by another account: still 1
+    send(bob, "919800777002", 1)         # a second contact
+    status = client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(alice)).json()
+    assert status["sent_today"] == 2 and status["remaining"] == 1 and status["reached"] is False and status["my_sent_today"] == 1
+
+    send(alice, "919800777003", 1)       # a third contact reaches the limit of 3
+    status = client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(bob)).json()
+    assert status["sent_today"] == 3 and status["reached"] is True
+
+    from app.services.whatsapp_guard import can_message
+    assert can_message(db_session, "919800777001")[0] is True                        # already counted today: still allowed
+    assert can_message(db_session, "919800777009") == (False, "daily_limit_reached")  # a new contact is refused

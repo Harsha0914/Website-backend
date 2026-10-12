@@ -1,5 +1,5 @@
 /**
- * Today's sending limit, SHARED by every account (100 messages per Indian day by default, with a heads-up at 50; set by the server).
+ * Today's sending limit, SHARED by every account (100 contacts per Indian day, each contact counted once by default, with a heads-up at 50; set by the server).
  * The server sends the numbers back with every send, and the app asks again every few seconds while it is open, so every
  * signed-in account sees the same total and the same notices almost at once.
  * `available` is false until the server has answered once, so the app never shows made-up numbers.
@@ -106,10 +106,10 @@ export function resetTimeLabel(resetsAt = state.resetsAt) {
 
 /** The sentence shown wherever the limit is reached. */
 export function dailyLimitMessage() {
-  return `The shared daily limit of ${state.limit} messages has been reached. No account can send more messages until it resets tomorrow, from ${resetTimeLabel()}.`;
+  return `The shared daily limit of ${state.limit} contacts has been reached. No account can message new contacts until it resets tomorrow, from ${resetTimeLabel()}.`;
 }
 
 /** The heads-up shown to every account once the shared total reaches the "warn at" amount (50 of 100). */
 export function dailyWarningMessage() {
-  return `${state.sentToday} messages have been sent today. Only ${state.remaining} messages remain out of the shared daily limit of ${state.limit}.`;
+  return `${state.sentToday} contacts have been messaged today. Only ${state.remaining} contacts remain out of the shared daily limit of ${state.limit}.`;
 }

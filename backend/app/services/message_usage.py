@@ -53,7 +53,8 @@ def usage_report(db: Session) -> Dict[str, Any]:
     by_owner = {r[0]: r for r in rows}
 
     accounts: List[Dict[str, Any]] = []
-    shared_reached = bool(limit > 0 and sum(int(r[2] or 0) for r in rows) >= limit)   # the limit is shared by all accounts
+    from app.services.whatsapp_guard import outbound_count_today_all
+    shared_reached = bool(limit > 0 and outbound_count_today_all(db) >= limit)   # the limit is shared by all accounts and counts contacts
     for user in db.query(User).order_by(User.id).all():
         r = by_owner.get(user.id)
         all_time, sent_today, sent_week, shops, last = (int(r[1]), int(r[2] or 0), int(r[3] or 0), int(r[4]), r[5]) if r else (0, 0, 0, 0, None)

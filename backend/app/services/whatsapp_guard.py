@@ -123,27 +123,32 @@ def ist_day_start_utc(now: Optional[datetime] = None) -> datetime:
     return ist_now.replace(hour=0, minute=0, second=0, microsecond=0) - _IST_OFFSET
 
 
-def outbound_count_today(db: Session, owner_id: int) -> int:
-    """Messages ONE account has really sent since midnight IST (shown on the admin page; the limit itself is shared)."""
-    return (
-        db.query(WhatsAppMessage.id)
-        .join(WhatsAppConversation, WhatsAppConversation.id == WhatsAppMessage.conversation_id)
+def _contacts_today(db: Session, owner_id=None) -> set:
+    """
+    The contacts (phone numbers) messaged since midnight IST. A contact counts ONCE however many messages go to it,
+    and however many accounts message it. Pass owner_id to look at one account's contacts only.
+    """
+    query = (
+        db.query(WhatsAppConversation.phone_number)
+        .join(WhatsAppMessage, WhatsAppConversation.id == WhatsAppMessage.conversation_id)
         .filter(
-            WhatsAppConversation.owner_id == owner_id,
             WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
             WhatsAppMessage.status.in_(_DELIVERED_STATUSES),
             WhatsAppMessage.created_at >= ist_day_start_utc(),
         )
-        .count()
     )
+    if owner_id is not None:
+        query = query.filter(WhatsAppConversation.owner_id == owner_id)
+    return {phone_key(row[0]) for row in query.distinct().all() if phone_key(row[0])}
 
 
-def outbound_count_today_all(db: Session) -> int:
-    """
-    Messages sent today (Indian day) by EVERY account together: the one shared counter the daily limit is checked against.
-    After a redeploy the SQL database starts empty, so every account's messages are first brought back from MongoDB
-    (once per account per process), otherwise the shared count would start again from zero.
-    """
+def outbound_count_today(db: Session, owner_id: int) -> int:
+    """Contacts ONE account has messaged since midnight IST."""
+    return len(_contacts_today(db, owner_id))
+
+
+def _restore_every_account(db: Session) -> None:
+    """After a redeploy the SQL database starts empty: bring every account's chats back from MongoDB first (once per account per process)."""
     try:
         from app.models.user import User
         from app.services.chat_durability import restore_for_user
@@ -151,20 +156,20 @@ def outbound_count_today_all(db: Session) -> int:
             restore_for_user(db, user)
     except Exception:  # a MongoDB problem must never stop the count
         pass
-    return (
-        db.query(WhatsAppMessage.id)
-        .filter(
-            WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
-            WhatsAppMessage.status.in_(_DELIVERED_STATUSES),
-            WhatsAppMessage.created_at >= ist_day_start_utc(),
-        )
-        .count()
-    )
+
+
+def outbound_count_today_all(db: Session) -> int:
+    """
+    Contacts messaged today (Indian day) by EVERY account together: the one shared counter the daily limit is checked
+    against. Each contact counts once, no matter how many messages were sent to it or by which account.
+    """
+    _restore_every_account(db)
+    return len(_contacts_today(db))
 
 
 def daily_limit_status(db: Session, owner_id: Optional[int] = None) -> dict:
     """
-    The SHARED daily limit: {limit, warn_at, sent_today, remaining, reached, resets_at, my_sent_today}.
+    The SHARED daily limit, counted in contacts: {limit, warn_at, sent_today, remaining, reached, resets_at, my_sent_today}.
     sent_today / remaining / reached cover all accounts together; my_sent_today is the calling account's own share.
     """
     limit = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
@@ -204,9 +209,11 @@ def can_message(
 
     cap = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
     if cap > 0:
-        # One limit shared by every account, per Indian day.
-        used = outbound_count_today_all(db)
-        if used + batch_sent_so_far >= cap:
+        # One limit shared by every account, per Indian day, counted in CONTACTS. A contact already messaged today is
+        # never blocked (it is already counted), only a new contact is once the limit is used up.
+        _restore_every_account(db)
+        contacts = _contacts_today(db)
+        if phone_key(phone) not in contacts and len(contacts) + batch_sent_so_far >= cap:
             return False, "daily_limit_reached"
 
     if check_cooldown:

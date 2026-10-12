@@ -310,7 +310,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                 <span className="qs-count-badge"><Users className="h-3.5 w-3.5" aria-hidden="true" />{selectedCount} selected</span>
                 <span>{visible.length} shown · {contacts.length} shops have a phone number{alreadyContactedCount > 0 && ` · ${alreadyContactedCount} already contacted`}</span>
                 {dailyLimit.available && dailyLimit.limit > 0 && (
-                  <span className={`qs-today ${dailyLimit.reached ? 'is-over' : ''}`}>Shared today: {dailyLimit.sentToday} of {dailyLimit.limit} sent{!dailyLimit.reached && Number.isFinite(dailyLimit.remaining) ? ` · ${dailyLimit.remaining} left` : ''}</span>
+                  <span className={`qs-today ${dailyLimit.reached ? 'is-over' : ''}`}>Shared today: {dailyLimit.sentToday} of {dailyLimit.limit} contacts{!dailyLimit.reached && Number.isFinite(dailyLimit.remaining) ? ` · ${dailyLimit.remaining} left` : ''}</span>
                 )}
               </p>
             </div>
