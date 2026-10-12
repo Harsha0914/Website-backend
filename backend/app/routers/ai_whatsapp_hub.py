@@ -598,7 +598,7 @@ def _public_picture_url(request, name: str, square: bool = False) -> str:
 
 @router.get("/daily-limit")
 def daily_limit(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    """How many messages the signed-in account may still send today (the limit resets at midnight, Indian time)."""
+    """How many messages may still be sent today by ALL accounts together (the shared limit resets at midnight, Indian time)."""
     from app.services.chat_durability import restore_for_user
     restore_for_user(db, current_user)  # after a redeploy today's messages are in MongoDB, not yet in SQL
     return daily_limit_status(db, current_user.id)

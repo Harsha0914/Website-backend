@@ -53,6 +53,7 @@ def usage_report(db: Session) -> Dict[str, Any]:
     by_owner = {r[0]: r for r in rows}
 
     accounts: List[Dict[str, Any]] = []
+    shared_reached = bool(limit > 0 and sum(int(r[2] or 0) for r in rows) >= limit)   # the limit is shared by all accounts
     for user in db.query(User).order_by(User.id).all():
         r = by_owner.get(user.id)
         all_time, sent_today, sent_week, shops, last = (int(r[1]), int(r[2] or 0), int(r[3] or 0), int(r[4]), r[5]) if r else (0, 0, 0, 0, None)
@@ -68,7 +69,7 @@ def usage_report(db: Session) -> Dict[str, Any]:
             "shops_contacted": shops,
             "last_sent_at": last.isoformat() if last else None,
             "daily_limit": limit,
-            "limit_reached": bool(limit > 0 and sent_today >= limit),
+            "limit_reached": shared_reached,
         })
     accounts.sort(key=lambda a: (-a["sent_today"], -a["sent_all_time"], a["name"].lower()))
 

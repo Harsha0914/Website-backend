@@ -30,6 +30,131 @@ from app.services.whatsapp_guard import sanitize_ai_reply
 from urllib.parse import urlparse
 
 
+# The message sent when someone says hi / hello, or writes something we have no specific answer for yet.
+WELCOME_REPLY = (
+    "Thank you for your interest in Lexon IT! 😊\n"
+    "We\u2019d be happy to help you build a professional website for your business.\n"
+    "To understand your requirements better, could you please share a few details?\n\n"
+    "1. What type of business do you run?\n"
+    "2. Do you need a simple business website, an online ordering/booking website, or an e-commerce website?\n"
+    "3. Do you have any specific features or designs in mind?\n\n"
+    "Based on your requirements, we\u2019ll suggest the best solution at an affordable price.\n"
+    "Looking forward to working with you! 🚀\n"
+    "\u2014 Team Lexon IT"
+)
+
+
+DEMO_LINK = "https://easybillbro.com/"
+
+PRICING_REPLY = (
+    "Our website development prices depend on your requirements and the features you need. 😊\n\n"
+    "We offer affordable website solutions for small businesses, including professional business websites, "
+    "e-commerce websites, and custom web applications.\n\n"
+    "Could you please tell us a little about your business and what kind of website you\u2019re looking for? "
+    "We\u2019ll provide you with a suitable package and pricing. 🚀\n"
+    "\u2014 Team Lexon IT"
+)
+
+RESTAURANT_PRICING_REPLY = (
+    "Hello! 😊 Thank you for your interest.\n\n"
+    "At Lexon IT, we offer affordable website development solutions for restaurants, cafes, and food businesses.\n\n"
+    "The price depends on the features you need, such as a digital menu, WhatsApp integration, online ordering, or table booking.\n\n"
+    "Could you please let us know which features you\u2019d like for your restaurant? "
+    "We\u2019ll share a suitable package and quotation with you.\n\n"
+    "Thank you!\n"
+    "*Team Lexon IT*"
+)
+
+CAFE_INQUIRY_REPLY = (
+    "That\u2019s great! 😊 We can help you create a professional website for your cafe.\n\n"
+    "Your website can include:\n"
+    "☕ Menu and pricing\n"
+    "📷 Food and cafe photos\n"
+    "📍 Location and contact details\n"
+    "📱 WhatsApp contact button\n"
+    "🛵 Online ordering (if required)\n\n"
+    "To get started, could you please share your cafe name and let us know whether you need a basic website "
+    "or a website with online ordering?\n\n"
+    "We\u2019ll suggest an affordable solution for your business! 🚀\n"
+    "\u2014 Team Lexon IT"
+)
+
+RESTAURANT_INQUIRY_REPLY = (
+    "Thank you for your interest in Lexon IT! 😊\n\n"
+    "We\u2019d love to help you create a professional website for your restaurant. 🍽️\n\n"
+    "We can build a website that helps you attract more customers and showcase your restaurant online.\n\n"
+    "✨ *Your restaurant website can include:*\n"
+    "🍽️ Digital menu with food prices\n"
+    "📷 Food photos and restaurant gallery\n"
+    "📍 Restaurant location and Google Maps\n"
+    "📞 Contact details and WhatsApp button\n"
+    "🕒 Opening hours\n"
+    "🛵 Online food ordering (optional)\n"
+    "📅 Table booking (optional)\n\n"
+    "To suggest the best and most affordable package for your restaurant, could you please share:\n\n"
+    "1. Your restaurant name\n"
+    "2. Do you need a basic website or a website with online ordering?\n"
+    "3. Do you have a budget in mind?\n\n"
+    "Once we have these details, we can recommend the right solution for your restaurant. 😊\n\n"
+    "Looking forward to working with you!\n\n"
+    "Best regards,\n"
+    "*Team Lexon IT* 🚀"
+)
+
+DEMO_REPLY = (
+    "Sure! 😊\n\n"
+    "Thank you for your interest in Lexon IT.\n\n"
+    "You can check out our website demo here:\n"
+    "🔗 " + DEMO_LINK + "\n\n"
+    "This will give you an idea of our website design and development capabilities.\n\n"
+    "We can also create a customized website for your {what}, featuring {features}.\n\n"
+    "If you\u2019re interested, we\u2019d be happy to discuss your requirements and create a website that suits your "
+    "{what}\u2019s needs at an affordable price. 🚀\n\n"
+    "Best regards,\n"
+    "Team Lexon IT"
+)
+
+_CAFE_WORDS = r"cafes?|cafeteria|coffee|chai"
+_FOOD_WORDS = r"restaurants?|biryani|dhaba|tiffins?|food|mess|canteen|dining|dine|hotel"
+
+
+def _food_type(text: str) -> Optional[str]:
+    """'cafe' or 'restaurant' when the text is about one, else None."""
+    if re.search(rf"\b(?:{_CAFE_WORDS})\b", text):
+        return "cafe"
+    if re.search(rf"\b(?:{_FOOD_WORDS})\b", text):
+        return "restaurant"
+    return None
+
+
+def scripted_reply(incoming: str, intent, category: str, history: str) -> Optional[str]:
+    """
+    The fixed, approved replies for the common first questions: a greeting, "how much", "send a demo", and
+    "I need a website for my cafe / restaurant". Returns None for everything else, which the AI answers.
+    """
+    text = (incoming or "").lower()
+    kind = _food_type(text) or _food_type((category or "").lower()) or _food_type((history or "").lower())
+    asks_demo = bool(re.search(r"\b(demo|demos|sample|samples|example|examples|portfolio|link)\b", text))
+    asks_price = bool(re.search(r"\b(price|prices|pricing|cost|costs|how much|rate|rates|charge|charges|quotation|quote|package|packages|budget|fee|fees)\b", text))
+    needs_site = bool(re.search(r"\b(need|want|looking|require|create|build|make|get)\b", text)) and bool(re.search(r"\b(website|web site|site)\b", text))
+
+    if asks_demo:
+        if kind:
+            what, features = ("cafe" if kind == "cafe" else "restaurant"), "your food menu, food photos, location, contact details, and online ordering options"
+        else:
+            what, features = "business", "your products or services, photos, location, contact details, and a WhatsApp button"
+        return DEMO_REPLY.format(what=what, features=features)
+    if asks_price:
+        return RESTAURANT_PRICING_REPLY if kind else PRICING_REPLY
+    if needs_site and kind == "cafe" and _food_type(text) == "cafe":
+        return CAFE_INQUIRY_REPLY
+    if needs_site and _food_type(text) == "restaurant":
+        return RESTAURANT_INQUIRY_REPLY
+    if intent == AIIntent.GREETING:
+        return WELCOME_REPLY
+    return None
+
+
 # ─── 1. Intent Detection Rule Keywords ───────────────────────────────────────
 INTENT_PATTERNS = {
     AIIntent.GREETING: [
@@ -460,6 +585,17 @@ def generate_ai_sales_response(
     
     conversation_history_txt = "\n".join(history_lines) if history_lines else f"Owner: {incoming_message}"
 
+    # The approved ready-made replies go out first; the same reply is never sent twice in a row, so a follow-up goes to the AI.
+    ready = scripted_reply(incoming_message, intent, category, conversation_history_txt)
+    if ready:
+        already = db.query(WhatsAppMessage.id).filter(
+            WhatsAppMessage.conversation_id == conversation.id,
+            WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
+            WhatsAppMessage.message_body == ready,
+        ).first()
+        if not already:
+            return ready, False, None
+
     master_system_prompt = f"""You are an AI WhatsApp sales assistant for a website development agency.
 Your job is to continue WhatsApp conversations with shop owners and business owners who were initially contacted by an Admin because their business may not have a website.
 
@@ -599,82 +735,6 @@ Generate the next WhatsApp response:"""
 
     text_lower = incoming_message.lower()
 
-    # 1. Affirmation / Demo Request (e.g. 'yeah', 'yess', 'yes', 'sure', 'send demo', 'ok', 'show me')
-    is_affirmation = bool(re.search(r"\b(y+e+s+|y+e+a+h*|y+e+p+|y+u+p+|y+a+s+|o+k+|o+k+a+y+|s+u+r+e+|s+e+n+d+|s+h+o+w+|d+e+m+o+|s+a+m+p+l+e+|l+i+n+k+|p+l+s+|p+l+e+a+s+e+|h+a+a*|a+v+u+n+u+)\b", text_lower))
-    
-    if is_affirmation or intent in (AIIntent.INTERESTED, AIIntent.ASKING_FOR_PORTFOLIO):
-        history_lower = conversation_history_txt.lower()
-        if any(w in history_lower or w in text_lower for w in ["gym", "fitness", "workout", "trainer", "yoga", "crossfit", "bodybuilding"]):
-            return (
-                f"🏋️ Awesome! Here is a live sample Gym & Fitness website demo:\n"
-                f"https://demo.lexonit.com/gym\n\n"
-                f"It features membership pricing plans, trainer showcases, and direct WhatsApp join buttons. Would you like a similar website design for your gym?"
-            ), False, None
-
-        elif any(w in history_lower or w in text_lower for w in ["salon", "saloon", "spa", "beauty", "hair", "parlour", "barber", "haircut"]):
-            return (
-                f"💇 Wonderful! Here is a live sample Salon & Spa website demo:\n"
-                f"https://demo.lexonit.com/salon\n\n"
-                f"It includes digital service rate cards, hairstyle photo galleries, and instant WhatsApp appointment booking. Would you like a website like this?"
-            ), False, None
-
-        elif any(w in history_lower or w in text_lower for w in ["hotel", "hotels", "lodge", "lodging", "resort", "room", "rooms", "stay"]):
-            return (
-                f"🏨 Superb! Here is a live sample Hotel & Resort website demo:\n"
-                f"https://demo.lexonit.com/hotel\n\n"
-                f"It includes room galleries, amenities, tariff cards, and direct WhatsApp room reservation. Would you like to create one for your property?"
-            ), False, None
-
-        elif any(w in history_lower or w in text_lower for w in ["supermarket", "super market", "grocery", "groceries", "mart", "kirana", "provision"]):
-            return (
-                f"🛒 Super! Here is a live sample Supermarket & Grocery website demo:\n"
-                f"https://demo.lexonit.com/supermarket\n\n"
-                f"It includes product categories, price lists, offer banners, and WhatsApp order cart buttons. Would you like a similar catalog website?"
-            ), False, None
-
-        elif any(w in history_lower or w in text_lower for w in ["cafe", "cafes", "coffee", "tea", "chai"]):
-            return (
-                f"☕ Fantastic! Here is a live sample Cafe & Coffee shop website demo:\n"
-                f"https://demo.lexonit.com/cafe\n\n"
-                f"It features an aesthetic beverage & snack photo menu, cozy gallery, and direct WhatsApp takeaway ordering. Would you like a similar website for your cafe?"
-            ), False, None
-
-        elif any(w in history_lower or w in text_lower for w in ["restaurant", "restaurants", "biryani", "dine", "dining", "dhaba", "tiffin", "food", "meals"]):
-            return (
-                f"🍽️ Fantastic! Here is a live sample Restaurant & Food menu website demo:\n"
-                f"https://demo.lexonit.com/restaurant\n\n"
-                f"It features digital multi-cuisine food menus with photos, table booking, and direct WhatsApp ordering. Would you like a similar website?"
-            ), False, None
-
-        elif any(w in history_lower or w in text_lower for w in ["bakery", "cake", "cakes", "pastry", "sweets", "sweet"]):
-            return (
-                f"🎂 Super! Here is a live sample Bakery & Cake shop website demo:\n"
-                f"https://demo.lexonit.com/bakery\n\n"
-                f"It features custom cake flavor catalogs, photo galleries, and WhatsApp cake ordering. Would you like a similar site?"
-            ), False, None
-
-        elif any(w in history_lower or w in text_lower for w in ["cloth", "fashion", "boutique", "tailor", "garment", "saree", "dress"]):
-            return (
-                f"👗 Super! Here is a live sample Boutique & Fashion store website demo:\n"
-                f"https://demo.lexonit.com/fashion\n\n"
-                f"It includes new arrival catalogs, lookbooks, and WhatsApp order cart buttons. Would you like a similar site?"
-            ), False, None
-
-        elif any(w in history_lower or w in text_lower for w in ["hospital", "clinic", "doctor", "pharmacy", "medical"]):
-            return (
-                f"🩺 Excellent! Here is a live sample Clinic & Healthcare website demo:\n"
-                f"https://demo.lexonit.com/clinic\n\n"
-                f"It includes doctor profiles, treatment services list, and WhatsApp appointment booking."
-            ), False, None
-
-        else:
-            demo_url = (kb.portfolio_links[0].get("url") if kb.portfolio_links else "https://demo.lexonit.com")
-            return (
-                f"Yes, definitely! 🌟 Here is a live sample website we built for local businesses:\n"
-                f"{demo_url}\n\n"
-                f"Would you like something similar for {shop_name}?"
-            ), False, None
-
     # 2. General Knowledge / FAQ Question Answering
     # Delivery Timeline & Process
     if any(w in text_lower for w in ["how long", "how many days", "when will it be ready", "delivery time", "timeline", "how much time", "how fast"]):
@@ -744,195 +804,6 @@ Generate the next WhatsApp response:"""
         )
         return reply, False, None
 
-    # Discount / Best Price
-    if any(w in text_lower for w in ["discount", "offer", "less price", "best price", "bargain", "cheap"]):
-        reply = (
-            f"🎁 We have a special limited-time launch offer: our complete Starter package is just ₹{starting_price} (regular ₹7,999) with domain, hosting, WhatsApp ordering & Google Maps setup included in 3 days!\n\n"
-            f"Would you like to reserve this offer today?"
-        )
-        return reply, False, None
-
-    # Package Selection Specific Responses
-    # 1. Starter Presence (₹4,999)
-    if any(w in text_lower for w in ["starter presence", "starter package", "starter", "4999", "4,999"]):
-        reply = (
-            f"🚀 Excellent choice! The Starter Presence Package (₹{basic_price}) includes:\n"
-            f"• Custom Mobile-Responsive Single Page Website 📱\n"
-            f"• 1 Year Free Custom Domain (.com / .in) & Fast Cloud Hosting 🌐\n"
-            f"• Direct 1-Click WhatsApp Ordering / Booking Button 💬\n"
-            f"• Google Maps Business Listing Setup & SEO 📍\n"
-            f"• Delivered & Live in just 3 Days! ⏱️\n\n"
-            f"To get started, please share your Shop/Business Name and address! 🏪"
-        )
-        return reply, False, None
-
-    # 2. Standard Business (₹9,999)
-    if any(w in text_lower for w in ["standard business", "standard package", "standard", "9999", "9,999"]):
-        reply = (
-            f"🌟 Great choice! The Standard Business Package (₹{standard_price}) includes:\n"
-            f"• Multi-Page Website (Home, Services, Gallery, Contact) 📄\n"
-            f"• Digital Product Catalog / Menu with HD Photo Gallery 📋\n"
-            f"• WhatsApp Ordering & Inquiry System 💬\n"
-            f"• Google Maps SEO & Local Discovery Optimization 📍\n"
-            f"• 1 Year Free Domain, High-Speed Hosting & SSL 🔒\n"
-            f"• Delivered in 3-5 Days! ⏱️\n\n"
-            f"To begin, what is your business name and category? 🏪"
-        )
-        return reply, False, None
-
-    # 3. Premium / E-Commerce (₹14,999)
-    if any(w in text_lower for w in ["premium", "e-commerce", "ecommerce", "14999", "14,999"]):
-        reply = (
-            f"💎 Superb choice! The Premium E-Commerce Package (₹{premium_price}) includes:\n"
-            f"• Complete Online Store with Unlimited Product Listings 🛍️\n"
-            f"• Shopping Cart, Online Payment Gateway (UPI, Cards) & WhatsApp Checkout 💳\n"
-            f"• Customer Reviews, Discount Coupons & Admin Dashboard 📊\n"
-            f"• 1 Year Free Domain, Dedicated Fast Hosting & SSL 🔒\n"
-            f"• Priority Delivery & Dedicated Support 🚀\n\n"
-            f"What is your store name and what products will you be selling? 🏪"
-        )
-        return reply, False, None
-
-    # 3. Category Specific Inquiries
-    # Salons, Spas & Beauty
-    if any(w in text_lower for w in ["salon", "saloon", "spa", "beauty", "hair", "parlour", "parlor", "barber", "haircut", "makeup", "grooming", "stylist", "facial", "massage", "nails"]):
-        reply = (
-            f"💇 Wonderful! For salons, spas & beauty parlours, we build modern websites with digital service rate cards, "
-            f"haircut & bridal styling photo portfolios, Google Maps location, and instant WhatsApp appointment booking starting from ₹{starting_price} in just 3 days!\n\n"
-            f"Would you like to see a live sample salon website?"
-        )
-        return reply, False, None
-
-    # Hotel / Lodge / Resort Specific
-    if any(w in text_lower for w in ["hotel", "hotels", "lodge", "lodging", "resort", "resorts", "room", "rooms", "stay", "stays", "accommodation", "guest house", "guesthouse", "pg", "hostel", "motel", "homestay", "inn", "cottage"]):
-        reply = (
-            f"🏨 Superb! For hotels, lodges & resorts, we build modern booking & room showcase websites with "
-            f"room galleries, amenities, tariff cards, Google Maps directions, and direct WhatsApp room reservation buttons starting from ₹{starting_price} in just 3 days!\n\n"
-            f"Would you like to see a demo hotel website?"
-        )
-        return reply, False, None
-
-    # Supermarkets, Grocery, Retail & Kirana
-    if any(w in text_lower for w in ["supermarket", "super market", "grocery", "groceries", "mart", "store", "shop", "kirana", "provision", "provisions", "general store", "vegetable", "vegetables", "fruits", "meat", "chicken"]):
-        reply = (
-            f"🛒 Super! For retail stores, groceries & supermarkets, we create digital product catalogs, price lists, "
-            f"offer banners, and direct WhatsApp order cart buttons starting from ₹{starting_price} in just 3 days!\n\n"
-            f"Would you like to see a demo catalog site?"
-        )
-        return reply, False, None
-
-    # Cafe & Coffee Shops
-    if any(w in text_lower for w in ["cafe", "cafes", "coffee", "tea", "chai", "boba", "beverage", "shakes"]):
-        reply = (
-            f"☕ Superb! For cafes & coffee shops, we build aesthetic beverage & snack menus with photos, "
-            f"cozy ambiance photo galleries, Instagram links, and direct WhatsApp takeaway ordering & table reservations starting from ₹{starting_price} in just 3 days!\n\n"
-            f"Would you like to see a live sample cafe website?"
-        )
-        return reply, False, None
-
-    # Restaurant & Dining Specific
-    if any(w in text_lower for w in ["restaurant", "restaurants", "biryani", "dine", "dining", "dhaba", "tiffin", "tiffins", "food", "mess", "canteen", "fast food", "meals", "pizza", "burger"]):
-        reply = (
-            f"🍽️ Awesome! For restaurants & dining, we build digital food menus with HD photos, "
-            f"direct WhatsApp table booking & home delivery ordering, and Google Maps location pins starting from ₹{starting_price} in just 3 days!\n\n"
-            f"Would you like me to share a live demo restaurant menu link?"
-        )
-        return reply, False, None
-
-    # Bakery & Cake Shops
-    if any(w in text_lower for w in ["bakery", "bake", "cake", "cakes", "pastry", "pastries", "sweets", "sweet", "ice cream", "dessert"]):
-        reply = (
-            f"🎂 Wonderful! For bakeries & cake shops, we build custom cake flavor catalogs, "
-            f"birthday/wedding cake photo galleries, and direct WhatsApp custom cake ordering starting from ₹{starting_price} in just 3 days!\n\n"
-            f"Would you like to see a demo bakery website?"
-        )
-        return reply, False, None
-
-    # Gym / Fitness / Yoga
-    if any(w in text_lower for w in ["gym", "gyms", "gymm", "fitness", "yoga", "crossfit", "workout", "trainer", "zumba", "bodybuilding", "sports"]):
-        reply = (
-            f"🏋️ Great! For gyms & fitness centers, we build modern websites with membership subscription plans, "
-            f"trainer profiles, equipment galleries, class schedules, and direct WhatsApp join buttons starting from ₹{starting_price}.\n\n"
-            f"Would you like to see a sample gym website?"
-        )
-        return reply, False, None
-
-    # Clothing / Boutique / Fashion / Tailoring
-    if any(w in text_lower for w in ["cloth", "clothes", "clothing", "fashion", "boutique", "tailor", "tailoring", "garment", "garments", "dress", "dresses", "saree", "sarees", "textile", "textiles", "footwear", "shoes"]):
-        reply = (
-            f"👗 Fantastic! For clothing boutiques, fashion stores & tailors, we create stunning digital lookbooks, "
-            f"new arrival collections, size guides, and direct WhatsApp order & custom measurement buttons starting from ₹{starting_price} in 3 days!\n\n"
-            f"Would you like to see a demo clothing store website?"
-        )
-        return reply, False, None
-
-    # Clinic, Hospital & Pharmacy
-    if any(w in text_lower for w in ["hospital", "clinic", "pharmacy", "medical", "doctor", "dental", "dentist", "lab", "diagnostic", "chemist", "medicine", "opticals"]):
-        reply = (
-            f"🩺 Excellent! For doctors, clinics & pharmacies, we build professional healthcare websites with "
-            f"doctor profiles, treatment services list, Google Maps clinic location, and direct WhatsApp appointment booking starting from ₹{starting_price} in 3 days!\n\n"
-            f"Would you like to see a sample clinic website?"
-        )
-        return reply, False, None
-
-    # Automobile, Car Wash & Mechanics
-    if any(w in text_lower for w in ["car wash", "automobile", "garage", "mechanic", "tyre", "service center", "car service", "bike service"]):
-        reply = (
-            f"🚗 Super! For automobile garages & car wash businesses, we build service package cards, price lists, Google Maps directions, and direct WhatsApp slot booking starting from ₹{starting_price} in 3 days!\n\n"
-            f"Would you like to see a demo automobile site?"
-        )
-        return reply, False, None
-
-    # Real Estate & Interior Design
-    if any(w in text_lower for w in ["real estate", "property", "builder", "interior", "architecture", "construction"]):
-        reply = (
-            f"🏠 Great! For real estate & interior designers, we build high-definition property galleries, floor plans, virtual tours, and WhatsApp inquiry buttons starting from ₹{starting_price} in 3 days!\n\n"
-            f"Would you like to see a sample portfolio?"
-        )
-        return reply, False, None
-
-    # Electronics, Mobiles & Hardware Repairs
-    if any(w in text_lower for w in ["mobile", "mobiles", "electronic", "electronics", "laptop", "computer", "repair", "electrical", "hardware", "cctv", "gadgets", "appliances"]):
-        reply = (
-            f"📱 Great! For electronics, mobile shops & repair stores, we build digital product showcase websites with "
-            f"latest smartphone/gadget catalogs, repair rate lists, and instant WhatsApp inquiry buttons starting from ₹{starting_price} in 3 days!\n\n"
-            f"Would you like to see a demo electronics website?"
-        )
-        return reply, False, None
-
-    # Photography, Studio & Events
-    if any(w in text_lower for w in ["photo", "photography", "studio", "video", "videography", "photographer", "event", "events", "wedding"]):
-        reply = (
-            f"📸 Amazing! For photographers, studios & event planners, we build high-definition photo/video portfolios, "
-            f"wedding package pricing cards, and direct WhatsApp booking buttons starting from ₹{starting_price} in 3 days!\n\n"
-            f"Would you like to see a demo studio portfolio?"
-        )
-        return reply, False, None
-
-    # 4. Standard Intents
-    if intent == AIIntent.GREETING:
-        target_name = f" for {shop_name}" if shop_name and shop_name not in ("Local Shop", "your store", "Local Area") else ""
-        reply = (
-            f"Hello! 👋 Welcome to {kb.company_name}.\n\n"
-            f"🚀 We build fast, modern mobile websites{target_name} with Google Maps location and direct WhatsApp ordering starting from ₹{starting_price} in just 3 days!\n\n"
-            f"✨ How can we help your business today?\n"
-            f"• View demo website samples 🌐\n"
-            f"• Check package pricing & features 💳\n"
-            f"• Tell us your shop/business type to get started 🏪"
-        )
-        return reply, False, None
-
-    if intent == AIIntent.ASKING_PRICE:
-        reply = (
-            f"💰 Our website packages start from ₹{starting_price} (delivered in 3 days) with mobile-responsive design, WhatsApp ordering button, and Google Maps listing included.\n\n"
-            f"📦 Packages available:\n"
-            f"• Starter Presence: ₹{basic_price}\n"
-            f"• Standard Business: ₹{standard_price}\n"
-            f"• Premium / E-Commerce: ₹{premium_price}\n\n"
-            f"What type of website are you looking for?"
-        )
-        return reply, False, None
-
     if intent == AIIntent.ASKING_SERVICES or any(w in text_lower for w in ["features", "feature", "what features", "features included", "services", "key features", "package features", "details"]):
         reply = (
             f"✨ All our website packages include these powerful features:\n\n"
@@ -971,11 +842,7 @@ Generate the next WhatsApp response:"""
             f"Thank you for contacting {kb.company_name}! Our team has noted your message and a specialist will respond to you shortly. Feel free to let us know if you need any specific details in the meantime! 👍"
         ), False, None
 
-    return (
-        f"Hello! 👋 Welcome to {kb.company_name}.\n\n"
-        f"We build professional, mobile-friendly websites for local businesses with WhatsApp ordering starting from ₹{starting_price}.\n\n"
-        f"How can we assist you today? Feel free to ask for a demo, pricing details, or share your business type! 🚀"
-    ), False, None
+    return WELCOME_REPLY, False, None
 
 
 # ─── 6. AI Suggested Replies Generator (For Human Operators) ────────────────

@@ -124,7 +124,7 @@ def ist_day_start_utc(now: Optional[datetime] = None) -> datetime:
 
 
 def outbound_count_today(db: Session, owner_id: int) -> int:
-    """Messages this account has really sent since midnight IST (the daily limit counts these)."""
+    """Messages ONE account has really sent since midnight IST (shown on the admin page; the limit itself is shared)."""
     return (
         db.query(WhatsAppMessage.id)
         .join(WhatsAppConversation, WhatsAppConversation.id == WhatsAppMessage.conversation_id)
@@ -138,10 +138,37 @@ def outbound_count_today(db: Session, owner_id: int) -> int:
     )
 
 
-def daily_limit_status(db: Session, owner_id: int) -> dict:
-    """{limit, warn_at, sent_today, remaining, reached, resets_at}: what the app shows about today's sending limit."""
+def outbound_count_today_all(db: Session) -> int:
+    """
+    Messages sent today (Indian day) by EVERY account together: the one shared counter the daily limit is checked against.
+    After a redeploy the SQL database starts empty, so every account's messages are first brought back from MongoDB
+    (once per account per process), otherwise the shared count would start again from zero.
+    """
+    try:
+        from app.models.user import User
+        from app.services.chat_durability import restore_for_user
+        for user in db.query(User).all():
+            restore_for_user(db, user)
+    except Exception:  # a MongoDB problem must never stop the count
+        pass
+    return (
+        db.query(WhatsAppMessage.id)
+        .filter(
+            WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
+            WhatsAppMessage.status.in_(_DELIVERED_STATUSES),
+            WhatsAppMessage.created_at >= ist_day_start_utc(),
+        )
+        .count()
+    )
+
+
+def daily_limit_status(db: Session, owner_id: Optional[int] = None) -> dict:
+    """
+    The SHARED daily limit: {limit, warn_at, sent_today, remaining, reached, resets_at, my_sent_today}.
+    sent_today / remaining / reached cover all accounts together; my_sent_today is the calling account's own share.
+    """
     limit = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
-    sent = outbound_count_today(db, owner_id)
+    sent = outbound_count_today_all(db)
     return {
         "limit": limit,
         "warn_at": int(settings.WHATSAPP_DAILY_WARNING_AT or 0),
@@ -149,6 +176,7 @@ def daily_limit_status(db: Session, owner_id: int) -> dict:
         "remaining": max(0, limit - sent) if limit > 0 else None,
         "reached": bool(limit > 0 and sent >= limit),
         "resets_at": (ist_day_start_utc() + timedelta(days=1)).isoformat(),
+        "my_sent_today": outbound_count_today(db, owner_id) if owner_id is not None else None,
     }
 
 
@@ -176,8 +204,8 @@ def can_message(
 
     cap = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
     if cap > 0:
-        # The limit is per account and per Indian day. Without an account (system calls) it stays a global 24-hour cap.
-        used = outbound_count_today(db, owner_id) if owner_id is not _ANY_OWNER else outbound_count_last_24h(db)
+        # One limit shared by every account, per Indian day.
+        used = outbound_count_today_all(db)
         if used + batch_sent_so_far >= cap:
             return False, "daily_limit_reached"
 

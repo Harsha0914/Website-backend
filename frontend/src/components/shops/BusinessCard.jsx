@@ -124,7 +124,7 @@ export function BusinessCard({ business, onSelect, isSelected = false }) {
               type="button"
               onClick={(e) => { stop(e); setShowWAModal(true); }}
               disabled={!canMessage || dailyLimit.reached}
-              title={dailyLimit.reached ? `Daily limit of ${dailyLimit.limit} messages reached. You can send again tomorrow.` : canMessage ? 'Choose a message and send it to this shop on WhatsApp' : 'This shop has no valid phone number'}
+              title={dailyLimit.reached ? `The shared daily limit of ${dailyLimit.limit} messages has been reached. Sending opens again tomorrow.` : canMessage ? 'Choose a message and send it to this shop on WhatsApp' : 'This shop has no valid phone number'}
               className="ui-btn ui-btn-success ui-btn-sm"
             >
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
