@@ -355,7 +355,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                 {dailyLimit.available && dailyLimit.limit > 0 && (
                   <span className={`results-source ${dailyLimit.reached || (dailyLimit.warnAt > 0 && dailyLimit.sentToday >= dailyLimit.warnAt) ? 'is-warn' : ''}`}>
                     <Send className="h-3.5 w-3.5" aria-hidden="true" />
-                    Today: {dailyLimit.sentToday} of {dailyLimit.limit} messages sent{dailyLimit.reached ? ' · limit reached' : ''}
+                    Shared today: {dailyLimit.sentToday} of {dailyLimit.limit} sent{dailyLimit.reached ? ' · limit reached' : Number.isFinite(dailyLimit.remaining) ? ` · ${dailyLimit.remaining} left` : ''}
                   </span>
                 )}
               </div>

@@ -280,9 +280,25 @@ def test_the_daily_limit_stops_an_account_and_says_so(client, alice, bob, monkey
     status = client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(alice)).json()
     assert status["reached"] is True and status["sent_today"] == 2 and status["resets_at"]
 
-    # the limit belongs to each account: Bob is not blocked by Alice's sending
-    assert client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(bob)).json()["sent_today"] == 0
-    assert _send_to(client, bob, "919800000004")["results"][0]["status"] == "sent"
+    # the limit is shared: Bob sees Alice's 2 messages and is stopped too
+    bob_status = client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(bob)).json()
+    assert bob_status["sent_today"] == 2 and bob_status["reached"] is True and bob_status["my_sent_today"] == 0
+    blocked = _send_to(client, bob, "919800000004")
+    assert blocked["results"][0]["status"] == "skipped" and blocked["results"][0]["error"] == "daily_limit_reached"
+
+
+def test_one_shared_daily_limit_counts_every_account_together(client, alice, bob, monkeypatch):
+    from app.config import settings
+    _really_sent(monkeypatch)
+    monkeypatch.setattr(settings, "WHATSAPP_DAILY_SEND_LIMIT", 100)
+    for n in range(15):
+        _send_to(client, alice, f"91981000{n:04d}")          # Alice sends 15
+    for n in range(20):
+        _send_to(client, bob, f"91982000{n:04d}")            # Bob sends 20
+    for who, mine in ((alice, 15), (bob, 20)):
+        status = client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(who)).json()
+        assert status["sent_today"] == 35 and status["remaining"] == 65 and status["reached"] is False
+        assert status["my_sent_today"] == mine and status["warn_at"] == 50
 
 
 def test_yesterdays_messages_do_not_count_after_midnight_in_india(client, db_session, alice, monkeypatch):

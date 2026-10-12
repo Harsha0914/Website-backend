@@ -34,7 +34,7 @@ export default function DailyLimitToast() {
         {reached ? <AlertTriangle className="h-5 w-5" /> : <Info className="h-5 w-5" />}
       </span>
       <div className="min-w-0">
-        <strong>{reached ? 'Daily limit reached' : `${limit.sentToday} messages sent today`}</strong>
+        <strong>{reached ? 'Shared daily limit reached' : `${limit.sentToday} messages sent today`}</strong>
         <p>{reached ? dailyLimitMessage() : dailyWarningMessage()}</p>
       </div>
       <button type="button" onClick={() => setClosed(true)} aria-label="Close this message"><X className="h-4 w-4" aria-hidden="true" /></button>

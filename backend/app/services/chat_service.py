@@ -119,7 +119,7 @@ def generate_ai_response(
     if settings.GEMINI_API_KEY and not settings.USE_RULE_BASED_CHAT:
         try:
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel((getattr(settings, "GEMINI_MODEL", "") or "gemini-2.5-flash").strip())
 
             system_instruction = (
                 f"You are the official AI Website Consultant for 'Lexon IT' (Website Presence Detection & Modern Web Design Company). "
