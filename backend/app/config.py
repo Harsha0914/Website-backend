@@ -82,7 +82,7 @@ class Settings(BaseSettings):
 
     # Gemini AI
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"         # the Gemini model that writes the AI replies (change on Render if Google retires it)
+    GEMINI_MODEL: str = "gemini-3.8-flash"         # the Gemini model that writes the AI replies (change on Render if Google retires it)
     USE_RULE_BASED_CHAT: bool = False
 
     # OpenAI / Open Chat AI API
