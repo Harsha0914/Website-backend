@@ -704,7 +704,7 @@ ONLY return the exact message ready to send to the business owner."""
         try:
             genai.configure(api_key=settings.GEMINI_API_KEY.strip())
             model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
+                model_name=(getattr(settings, "GEMINI_MODEL", "") or "gemini-2.5-flash").strip(),
                 system_instruction=master_system_prompt
             )
             prompt_input = f"""<history>
