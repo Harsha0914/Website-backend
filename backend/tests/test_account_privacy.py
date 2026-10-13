@@ -398,3 +398,45 @@ def test_the_shared_limit_counts_contacts_not_messages(client, db_session, alice
     from app.services.whatsapp_guard import can_message
     assert can_message(db_session, "919800777001")[0] is True                        # already counted today: still allowed
     assert can_message(db_session, "919800777009") == (False, "daily_limit_reached")  # a new contact is refused
+
+
+def test_total_is_the_combined_contacts_of_every_account_even_when_they_are_offline(client, db_session, alice, bob, boss, monkeypatch):
+    from datetime import timedelta
+    from app.services.whatsapp_guard import ist_day_start_utc
+    monkeypatch.setattr("app.config.settings.WHATSAPP_DAILY_SEND_LIMIT", 100)
+    at = ist_day_start_utc() + timedelta(hours=2)
+    for owner, count, prefix in ((alice, 10, "91990001"), (bob, 5, "91990002"), (boss, 8, "91990003")):
+        for n in range(count):
+            conv = WhatsAppConversation(owner_id=owner.id, phone_number=f"{prefix}{n:04d}", shop_name=f"{prefix}{n}")
+            db_session.add(conv)
+            db_session.commit()
+            db_session.refresh(conv)
+            for _ in range(3):                       # several messages per contact: still one contact each
+                _outbound(db_session, conv, "sent", at)
+    # whichever single account is looking, it sees everyone's contacts added together: 10 + 5 + 8
+    for viewer, mine in ((alice, 10), (bob, 5), (boss, 8)):
+        status = client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(viewer)).json()
+        assert status["sent_today"] == 23 and status["remaining"] == 77 and status["my_sent_today"] == mine
+
+
+def test_day_view_can_cover_the_last_n_days(client, db_session, alice, bob):
+    from datetime import timedelta
+    from app.services.whatsapp_guard import ist_day_start_utc
+    today = ist_day_start_utc() + timedelta(hours=5)
+    conv = WhatsAppConversation(owner_id=alice.id, phone_number="919800555001", shop_name="Range")
+    other = WhatsAppConversation(owner_id=bob.id, phone_number="919800555002", shop_name="NotMine")
+    db_session.add_all([conv, other])
+    db_session.commit()
+    for c in (conv, other):
+        db_session.refresh(c)
+    _outbound(db_session, conv, "sent", today)                         # today
+    _outbound(db_session, conv, "sent", today - timedelta(days=1))     # yesterday
+    _outbound(db_session, conv, "sent", today - timedelta(days=20))    # 20 days ago
+    _outbound(db_session, other, "sent", today)                        # another account: never shown
+    ymd = (today + timedelta(hours=5, minutes=30)).date().isoformat()
+    one = client.get("/api/whatsapp/day", params={"date": ymd}, headers=_hdr(alice)).json()
+    assert one["sent"] == 1 and one["days"] == 1
+    week = client.get("/api/whatsapp/day", params={"date": ymd, "days": 7}, headers=_hdr(alice)).json()
+    assert week["sent"] == 2 and week["chat_count"] == 1
+    month = client.get("/api/whatsapp/day", params={"date": ymd, "days": 30}, headers=_hdr(alice)).json()
+    assert month["sent"] == 3

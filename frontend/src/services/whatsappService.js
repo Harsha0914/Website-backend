@@ -148,8 +148,8 @@ export async function getWhatsAppSummary() {
   return res.data;
 }
 
-export async function getWhatsAppDay(date) {
-  const res = await api.get('/whatsapp/day', { params: { date } });
+export async function getWhatsAppDay(date, days = 1) {
+  const res = await api.get('/whatsapp/day', { params: { date, days } });
   return res.data;
 }
 

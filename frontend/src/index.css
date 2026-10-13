@@ -676,6 +676,8 @@ body {
 }
 .wa-period:hover { transform: translateY(-1px); border-color: var(--ui-border-strong); }
 .wa-period.is-now { border-color: var(--ui-primary); box-shadow: 0 0 0 1px var(--ui-primary), 0 14px 28px -16px rgba(79,70,229,.55); }
+.wa-period-link { cursor: pointer; }
+.wa-period-link:focus-visible { outline: 3px solid rgba(79, 70, 229, .35); outline-offset: 2px; }
 .wa-period-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .wa-period-top h3 { font-size: 0.8rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ui-muted); }
 .wa-period-icon { display: grid; place-items: center; width: 30px; height: 30px; color: var(--ui-primary); background: var(--ui-primary-soft); border-radius: 9px; }
