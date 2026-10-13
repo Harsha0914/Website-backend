@@ -118,7 +118,8 @@ export default function WhatsAppHubPage() {
   const chatCardRef = useRef(null);
   const [pictureThumbs, setPictureThumbs] = useState({}); // picture id -> small preview, so sent pictures can be shown
   const conversationsRef = useRef([]);
-  const [selectedDate, setSelectedDate] = useState(null); // an Indian calendar day (YYYY-MM-DD) or null
+  const [selectedDate, setSelectedDate] = useState(null); // an Indian calendar day (YYYY-MM-DD) or null; with selectedSpan > 1 it is the LAST day of a range
+  const [selectedSpan, setSelectedSpan] = useState(1);       // 1 = one day, 7 / 30 = "last 7 / 30 days"
   const [dayInfo, setDayInfo] = useState(null);
   const [dayLoading, setDayLoading] = useState(false);
 
@@ -266,7 +267,7 @@ export default function WhatsAppHubPage() {
     }
     let cancelled = false;
     setDayLoading(true);
-    getWhatsAppDay(selectedDate)
+    getWhatsAppDay(selectedDate, selectedSpan)
       .then((info) => {
         if (cancelled) return;
         setDayInfo(info);
@@ -278,7 +279,13 @@ export default function WhatsAppHubPage() {
       .catch(() => { if (!cancelled) setDayInfo(null); })
       .finally(() => { if (!cancelled) setDayLoading(false); });
     return () => { cancelled = true; };
-  }, [selectedDate, selectConversation]);
+  }, [selectedDate, selectedSpan, selectConversation]);
+
+  // One entry point for "show this day" (span 1) or "show the last N days" (span N); null clears the filter.
+  function pickDay(date, span = 1) {
+    setSelectedDate(date);
+    setSelectedSpan(date ? span : 1);
+  }
 
   const dayIds = selectedDate && dayInfo ? new Set(dayInfo.chats.map((c) => c.conversation_id)) : null;
   const q = searchQuery.trim().toLowerCase();
@@ -323,7 +330,7 @@ export default function WhatsAppHubPage() {
         </section>
 
         <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 wa-body pb-24 md:pb-8 flex flex-col">
-        <WhatsAppActivitySummary selectedDate={selectedDate} onSelectDate={setSelectedDate} dayInfo={dayInfo} dayLoading={dayLoading} />
+        <WhatsAppActivitySummary selectedDate={selectedDate} selectedSpan={selectedSpan} onSelectDate={pickDay} dayInfo={dayInfo} dayLoading={dayLoading} />
 
         <div ref={chatCardRef} className="ui-card wa-chat-card overflow-hidden grid grid-cols-[minmax(0,1fr)] lg:grid-cols-12 min-w-0" style={{ minHeight: 600, height: 'calc(100vh - 230px)', maxHeight: 820 }}>
           {/* ───────── Chat list ───────── */}
@@ -349,8 +356,8 @@ export default function WhatsAppHubPage() {
               </div>
               {selectedDate && (
                 <div className="mt-2 flex items-center justify-between gap-2 text-sm rounded-lg px-3 py-2" style={{ background: 'var(--ui-primary-soft)', color: 'var(--ui-primary-text)' }} role="status">
-                  <span>Chats from <strong>{formatYmdIST(selectedDate)}</strong>{dayInfo ? ` (${dayInfo.chat_count})` : ''}</span>
-                  <button type="button" className="font-semibold underline" onClick={() => setSelectedDate(null)}>Show all</button>
+                  <span>Chats from <strong>{selectedSpan > 1 ? `the last ${selectedSpan} days` : formatYmdIST(selectedDate)}</strong>{dayInfo ? ` (${dayInfo.chat_count})` : ''}</span>
+                  <button type="button" className="font-semibold underline" onClick={() => pickDay(null)}>Show all</button>
                 </div>
               )}
             </div>
@@ -358,7 +365,7 @@ export default function WhatsAppHubPage() {
             <ul className="flex-1 overflow-y-auto min-h-0" role="list">
               {filteredConversations.length === 0 ? (
                 <li className="p-8 text-center text-sm" style={{ color: 'var(--ui-muted)' }}>
-                  {loading || dayLoading ? 'Loading chats…' : selectedDate && dayInfo && !dayInfo.chats.length ? 'No messages were sent or received on this day.' : conversations.length ? 'No chat matches your search.' : 'No chats yet. Send a message to a shop and it will show up here.'}
+                  {loading || dayLoading ? 'Loading chats…' : selectedDate && dayInfo && !dayInfo.chats.length ? selectedSpan > 1 ? 'No messages were sent or received in this period.' : 'No messages were sent or received on this day.' : conversations.length ? 'No chat matches your search.' : 'No chats yet. Send a message to a shop and it will show up here.'}
                 </li>
               ) : (
                 filteredConversations.map((conv) => {

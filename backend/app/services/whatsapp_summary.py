@@ -105,13 +105,14 @@ def build_summary(db: Session, owner_id: int, now_utc: Optional[datetime] = None
     }
 
 
-def day_detail(db: Session, owner_id: int, day: date_type) -> dict:
+def day_detail(db: Session, owner_id: int, day: date_type, days: int = 1) -> dict:
     """
-    Everything that happened on one Indian calendar day in this account's chats: totals and the list of
-    chats that had a message that day (newest activity first).
+    Everything that happened on one Indian calendar day in this account's chats (or, with days > 1, on that day and the
+    days before it, so days=7 is "last 7 days"): totals and the list of chats that had a message then (newest first).
     """
-    start = datetime(day.year, day.month, day.day) - IST_OFFSET
-    end = start + timedelta(days=1)
+    days = max(1, min(int(days or 1), 90))
+    end = datetime(day.year, day.month, day.day) - IST_OFFSET + timedelta(days=1)
+    start = end - timedelta(days=days)
 
     conv_ids = [r[0] for r in db.query(WhatsAppConversation.id).filter(WhatsAppConversation.owner_id == owner_id).all()]
     chats: Dict[int, dict] = {}
@@ -147,6 +148,7 @@ def day_detail(db: Session, owner_id: int, day: date_type) -> dict:
     ordered = sorted(chats.values(), key=lambda c: c["last_at"] or "", reverse=True)
     return {
         "date": day.isoformat(),
+        "days": days,
         "sent": sum(c["sent"] for c in ordered),
         "received": sum(c["received"] for c in ordered),
         "failed": sum(c["failed"] for c in ordered),

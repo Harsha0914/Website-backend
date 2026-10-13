@@ -952,6 +952,7 @@ def get_whatsapp_summary(
 @router.get("/day")
 def get_whatsapp_day(
     date: str = Query(..., description="An Indian calendar day, YYYY-MM-DD"),
+    days: int = Query(1, ge=1, le=90, description="1 = just that day; 7 = that day and the 6 before it"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -963,7 +964,7 @@ def get_whatsapp_day(
         day = date_type.fromisoformat(date)
     except ValueError:
         raise HTTPException(status_code=400, detail="Use a date like 2026-10-09")
-    return day_detail(db, current_user.id, day)
+    return day_detail(db, current_user.id, day, days)
 
 
 @router.get("/stats")

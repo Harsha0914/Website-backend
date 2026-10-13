@@ -3,12 +3,19 @@ import { Send, Users, MessageCircle, AlertCircle, TrendingUp, ChevronDown, Chevr
 import { getWhatsAppSummary } from '../../services/whatsappService';
 import { todayIST, formatYmdIST } from '../../utils/time';
 
+// span = how many days the card covers, counted back from `daysAgo` days ago (so "yesterday" is 1 day ago, one day long)
 const PERIODS = [
-  { key: 'today', label: 'Today' },
-  { key: 'yesterday', label: 'Yesterday' },
-  { key: 'last_7_days', label: 'Last 7 days' },
-  { key: 'last_30_days', label: 'Last 30 days' },
+  { key: 'today', label: 'Today', daysAgo: 0, span: 1 },
+  { key: 'yesterday', label: 'Yesterday', daysAgo: 1, span: 1 },
+  { key: 'last_7_days', label: 'Last 7 days', daysAgo: 0, span: 7 },
+  { key: 'last_30_days', label: 'Last 30 days', daysAgo: 0, span: 30 },
 ];
+
+/** The Indian calendar day `n` days before today, as YYYY-MM-DD. */
+function daysBeforeToday(n) {
+  const [y, m, d] = todayIST().split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - n)).toISOString().slice(0, 10);
+}
 
 const STORAGE_KEY = 'wa_activity_open';
 
@@ -20,10 +27,19 @@ function readOpen() {
   }
 }
 
-function PeriodCard({ label, data, highlight }) {
+function PeriodCard({ label, data, highlight, active, onOpen }) {
   const d = data || { sent: 0, contacted: 0, replies: 0, replied: 0, failed: 0, not_sent: 0, reply_rate: 0 };
   return (
-    <section className={`wa-period ${highlight ? 'is-now' : ''}`} aria-label={label}>
+    <section
+      className={`wa-period wa-period-link ${highlight || active ? 'is-now' : ''}`}
+      aria-label={label}
+      role="button"
+      tabIndex={0}
+      aria-pressed={Boolean(active)}
+      title={active ? `Showing ${label.toLowerCase()}: tap again to show all chats` : `Open the chats from ${label.toLowerCase()}`}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+    >
       <div className="wa-period-top">
         <h3>{label}</h3>
         <span className="wa-period-icon" aria-hidden="true"><Send className="h-4 w-4" /></span>
@@ -160,7 +176,7 @@ function DailyChart({ days, selectedDate, onSelectDate, dayInfo, dayLoading }) {
  * "Your activity": messages sent and replies, today / yesterday / over time, with a calendar.
  * Can be hidden with the button at the top (the choice is remembered on this device).
  */
-export default function WhatsAppActivitySummary({ selectedDate = null, onSelectDate = () => {}, dayInfo = null, dayLoading = false }) {
+export default function WhatsAppActivitySummary({ selectedDate = null, selectedSpan = 1, onSelectDate = () => {}, dayInfo = null, dayLoading = false }) {
   const [open, setOpen] = useState(readOpen);
   const [data, setData] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -223,9 +239,20 @@ export default function WhatsAppActivitySummary({ selectedDate = null, onSelectD
         {data && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {PERIODS.map((p, i) => (
-                <PeriodCard key={p.key} label={p.label} data={data.periods?.[p.key]} highlight={i === 0} />
-              ))}
+              {PERIODS.map((p) => {
+                const date = daysBeforeToday(p.daysAgo);
+                const active = selectedDate === date && selectedSpan === p.span;
+                return (
+                  <PeriodCard
+                    key={p.key}
+                    label={p.label}
+                    data={data.periods?.[p.key]}
+                    highlight={!selectedDate && p.key === 'today'}
+                    active={active}
+                    onOpen={() => (active ? onSelectDate(null) : onSelectDate(date, p.span))}
+                  />
+                );
+              })}
             </div>
             <DailyChart
               days={data.daily || []}
