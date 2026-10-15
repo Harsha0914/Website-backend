@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { sendDirectWhatsAppPitch, formatPhoneNumber } from '../../services/whatsappService';
 import { WHATSAPP_TEMPLATES, DEFAULT_TEMPLATE_ID, getTemplate, fillTemplate } from '../../services/whatsappTemplates';
+import { getSavedMessage, saveMessage, clearSavedMessage, syncSavedMessages } from '../../services/savedMessages';
 import MessageImagePicker, { FLYER_VALUE, pictureSrc } from '../whatsapp/MessageImagePicker';
 import { imageCategoryFor, dominantImageCategory } from '../../utils/imageTools';
 import { useContactedShops, contactedAt, contactedAgo, refreshContacted } from '../../services/contactedShops';
@@ -53,7 +54,8 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
   const [firstN, setFirstN] = useState('10');
 
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID);
-  const [message, setMessage] = useState(getTemplate(DEFAULT_TEMPLATE_ID).body);
+  const touchedRef = useRef(false);   // true once the user has typed in this window
+  const [message, setMessage] = useState(() => getSavedMessage(DEFAULT_TEMPLATE_ID) || getTemplate(DEFAULT_TEMPLATE_ID).body);
   const [image, setImage] = useState(getTemplate(DEFAULT_TEMPLATE_ID).includeFlyer ? FLYER_VALUE : null);
   const [library, setLibrary] = useState([]);       // the account's pictures (loaded by the picker)
   const [matchPerShop, setMatchPerShop] = useState(false); // use each shop's own type of picture when there is one
@@ -212,10 +214,31 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
   });
   const allVisibleSelected = pickable.length > 0 && pickable.slice(0, canPick).every((c) => selected.has(c.key)) && canPick > 0;
 
+  // When the window opens, fetch the wording saved on the account and show it (unless the user has already typed).
+  useEffect(() => {
+    if (!isOpen) return;
+    touchedRef.current = false;
+    syncSavedMessages().then((server) => {
+      if (server && !touchedRef.current) setMessage(getSavedMessage(templateId) || getTemplate(templateId).body);
+    });
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const pickTemplate = (t) => {
     setTemplateId(t.id);
-    setMessage(t.body);
+    setMessage(getSavedMessage(t.id) || t.body);
     setImage((current) => current ?? (t.includeFlyer ? FLYER_VALUE : null));
+  };
+
+  // The newest text the user wrote stays saved for this message type until they change it again.
+  const editMessage = (text) => {
+    touchedRef.current = true;
+    setMessage(text);
+    saveMessage(templateId, text);
+  };
+  const originalBody = getTemplate(templateId).body;
+  const backToOriginal = () => {
+    clearSavedMessage(templateId);
+    setMessage(originalBody);
   };
 
   if (!isOpen) return null;
@@ -383,8 +406,14 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
 
               <div>
                 <label htmlFor="bulk-message" className="ui-label">Message <span className="ui-muted">(you can edit it)</span></label>
-                <textarea id="bulk-message" value={message} onChange={(e) => setMessage(e.target.value)} rows={8} className="ui-input" style={{ lineHeight: 1.55, resize: 'vertical', minHeight: 150 }} />
-                <p className="ui-help mt-1">The text <code>{'{shop_name}'}</code> is replaced with each shop's own name.</p>
+                <textarea id="bulk-message" value={message} onChange={(e) => editMessage(e.target.value)} rows={8} className="ui-input" style={{ lineHeight: 1.55, resize: 'vertical', minHeight: 150 }} />
+                <p className="ui-help mt-1">The text <code>{'{shop_name}'}</code> is replaced with each shop's own name. Your latest wording is saved and shown here next time.</p>
+                {message !== originalBody && (
+                  <button type="button" onClick={backToOriginal} className="ui-btn ui-btn-ghost ui-btn-sm mt-1">
+                    <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                    Back to the original
+                  </button>
+                )}
               </div>
 
               <div className="ui-notice ui-notice-info" role="note">
