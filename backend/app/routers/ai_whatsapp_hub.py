@@ -596,6 +596,36 @@ def _public_picture_url(request, name: str, square: bool = False) -> str:
     return f"{base}/api/public/pictures/{name}{'/square' if square else ''}" if base else ""
 
 
+class SavedMessageBody(BaseModel):
+    text: str = ""
+
+
+@router.get("/saved-messages")
+def get_saved_messages(current_user=Depends(get_current_user)):
+    """The wording this account last saved for each message type: {template_id: text}."""
+    from app.services import saved_messages
+    return saved_messages.get_all(current_user.email)
+
+
+@router.put("/saved-messages/{template_id}")
+def put_saved_message(template_id: str, body: SavedMessageBody, current_user=Depends(get_current_user)):
+    """Replace the saved wording for a message type with the newest text (an empty text clears it)."""
+    from app.services import saved_messages
+    if not saved_messages.valid_template_id(template_id):
+        raise HTTPException(status_code=400, detail="Unknown message type")
+    saved_messages.save(current_user.email, template_id, body.text)
+    return {"template_id": template_id, "saved": bool(body.text.strip())}
+
+
+@router.delete("/saved-messages/{template_id}")
+def delete_saved_message(template_id: str, current_user=Depends(get_current_user)):
+    from app.services import saved_messages
+    if not saved_messages.valid_template_id(template_id):
+        raise HTTPException(status_code=400, detail="Unknown message type")
+    saved_messages.delete(current_user.email, template_id)
+    return {"template_id": template_id, "saved": False}
+
+
 @router.get("/daily-limit")
 def daily_limit(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """How many messages may still be sent today by ALL accounts together (the shared limit resets at midnight, Indian time)."""

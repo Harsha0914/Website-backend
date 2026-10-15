@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { getSavedMessage, saveMessage, clearSavedMessage, toReusable, syncSavedMessages } from '../../services/savedMessages';
 import { createPortal } from 'react-dom';
 import { X, Check, ArrowLeft, Copy, Loader2, Send, AlertCircle, MessageCircle, FileText, Link2, Building2, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -47,6 +48,10 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const dialogRef = useRef(null);
 
   useEffect(() => {
+    if (isOpen) syncSavedMessages();      // bring the wording saved on the account to this device before a message is chosen
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen) return undefined;
     setStep('choose');
     setTemplateId(null);
@@ -85,9 +90,21 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const filledTemplate = template ? fillTemplate(template.body, shopName) : '';
   const edited = template && message !== filledTemplate;
 
+  // Whatever the user last wrote for this message type is shown again, until they change it.
+  const editMessage = (text) => {
+    setMessage(text);
+    if (templateId) saveMessage(templateId, toReusable(text, shopName));
+  };
+
+  const backToOriginal = () => {
+    if (templateId) clearSavedMessage(templateId);
+    setMessage(filledTemplate);
+  };
+
   const chooseTemplate = (t) => {
     setTemplateId(t.id);
-    setMessage(fillTemplate(t.body, shopName));
+    const saved = getSavedMessage(t.id);
+    setMessage(fillTemplate(saved || t.body, shopName));
     // keep a picture the user already chose; otherwise start from the template's default
     setImage((current) => current ?? (t.includeFlyer ? FLYER_VALUE : null));
     setError('');
@@ -229,7 +246,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
                 <textarea
                   id="wa-message"
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={(e) => editMessage(e.target.value)}
                   rows={9}
                   className="ui-input"
                   style={{ lineHeight: 1.55, resize: 'vertical', minHeight: 160 }}
@@ -240,7 +257,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
                     {copied ? 'Copied' : 'Copy text'}
                   </button>
                   {edited && (
-                    <button type="button" onClick={() => setMessage(filledTemplate)} className="ui-btn ui-btn-ghost ui-btn-sm">
+                    <button type="button" onClick={backToOriginal} className="ui-btn ui-btn-ghost ui-btn-sm">
                       <RotateCcw className="h-4 w-4" aria-hidden="true" />
                       Back to the original
                     </button>
