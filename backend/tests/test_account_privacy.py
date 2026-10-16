@@ -440,3 +440,27 @@ def test_day_view_can_cover_the_last_n_days(client, db_session, alice, bob):
     assert week["sent"] == 2 and week["chat_count"] == 1
     month = client.get("/api/whatsapp/day", params={"date": ymd, "days": 30}, headers=_hdr(alice)).json()
     assert month["sent"] == 3
+
+
+def test_a_test_to_your_own_number_can_be_repeated_but_real_shops_keep_the_30_day_wait(client, db_session, alice, monkeypatch):
+    from app.models.business import Business
+    _really_sent(monkeypatch)
+
+    def send(phone, is_test):
+        res = client.post("/api/ai-whatsapp/broadcast-all", headers=_hdr(alice), json={
+            "shops": [{"name": "Test", "phone": phone}], "custom_message": "test", "include_flyer": False, "is_test": is_test})
+        assert res.status_code == 200, res.text
+        return res.json()["results"][0]
+
+    mine = "919811100001"
+    assert send(mine, True)["status"] == "sent"
+    assert send(mine, True)["status"] == "sent"        # the same own number again and again: fine
+    assert send(mine, True)["status"] == "sent"
+    assert send(mine, False)["error"] == "recently_contacted"   # an ordinary send still waits 30 days
+
+    # a number that belongs to a real shop in the database is never treated as a test
+    db_session.add(Business(external_place_id="test-real-shop-1", name="Real Shop", category="cafe", phone="+91 98111-00002", latitude=17.4, longitude=78.4, address="x"))
+    db_session.commit()
+    shop = "919811100002"
+    assert send(shop, True)["status"] == "sent"
+    assert send(shop, True)["error"] == "recently_contacted"
