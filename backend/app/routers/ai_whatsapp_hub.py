@@ -70,6 +70,7 @@ class BulkWhatsAppBroadcastSchema(BaseModel):
     include_flyer: Optional[bool] = True
     image_id: Optional[int] = None   # a picture from the signed-in account's own library
     template_key: Optional[str] = None  # 'offer-link' | 'about-company': which message the user chose
+    custom_text: Optional[bool] = False  # the user changed the wording: send it through the flexible template when one is approved
 
 class MessageSendSchema(BaseModel):
     message_text: str
@@ -692,6 +693,7 @@ def send_mode(
         return {"mode": "free", "template": None, "template_ready": True, "note": "test mode"}
     with_picture = bool(picture)
     template, ready = Lad.pick_template(template_key, with_picture=with_picture)
+    flexible = Lad.pick_flexible(with_picture)   # an approved template that can carry the user's own edited text
     try:
         token, _ = Lad.get_token()
         conv_id = Lad._find_conversation_id(Lad._clean_phone(phone), token) if token else None
@@ -703,6 +705,7 @@ def send_mode(
         "template": template,
         "template_ready": bool(template and ready),
         "with_picture": with_picture and bool(template),
+        "flexible_template": flexible,
     }
 
 
@@ -847,6 +850,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                     image_path=image_path,
                     image_url=image_url or (_public_picture_url(request, "flyer") if should_send_flyer else None),
                     template_key=payload.template_key,
+                    custom_text=bool(payload.custom_text),
                     image_header_url=image_header_url or (_public_picture_url(request, "flyer", square=True) if should_send_flyer else None),
                 )
             except Exception as w_err:

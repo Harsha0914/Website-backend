@@ -91,6 +91,11 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const shop = business || shopName;      // everything we know about the shop, so every detail can be filled in
   const filledTemplate = template ? fillTemplate(template.body, shop) : '';
   const edited = template && message !== filledTemplate;
+  // A first message to a shop that has not written in the last 24 hours must be WhatsApp's approved template, whose wording is
+  // fixed. Show that exact wording (not the edited text, which is used once the shop replies) so nothing looks different when sent.
+  const flexibleCarriesEdit = !!edited && !!sendMode?.flexible_template;     // the user's own wording can go out as a first message
+  const usesApprovedTemplate = sendMode?.mode === 'template' && !!sendMode.template && !!template && !flexibleCarriesEdit;
+  const shownText = usesApprovedTemplate ? filledTemplate : message;
 
   // Whatever the user last wrote for this message type is shown again, until they change it.
   const editMessage = (text) => {
@@ -136,6 +141,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
       await sendDirectWhatsAppPitch(business, message.trim(), phoneDigits, image?.kind === 'flyer', {
         imageId: image?.kind === 'library' ? image.id : null,
         templateKey: templateId,
+        customText: !!edited,
       });
       setStep('sent');
       if (onSent) onSent();
@@ -285,7 +291,9 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
                   <span>
                     <strong>{shopName} has not messaged you in the last 24 hours.</strong> WhatsApp then only allows an approved template as a first
                     message.{' '}
-                    {sendMode.template
+                    {flexibleCarriesEdit
+                      ? <>Because you changed the wording, it will be sent through the approved flexible template “{sendMode.flexible_template}”, so your text goes out as written. Line breaks become “ | ” (WhatsApp does not allow line breaks there), and there is a limit of about 900 characters.</>
+                      : sendMode.template
                       ? <>This will be sent as {TEMPLATE_NOTE[sendMode.template] || `the approved template “${sendMode.template}”`}. {sendMode.with_picture ? 'Your picture goes in its header.' : 'It carries no picture.'} Its wording is fixed. Your edits to the text are used once the shop replies.</>
                       : <>The approved template for this message is not available yet, so it cannot be sent to this shop right now.</>}
                   </span>
@@ -295,13 +303,13 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
               <MessageImagePicker value={image} onChange={setImage} category={imageCategoryFor(business?.category)} />
 
               <div>
-                <p className="ui-label">What {shopName} will see</p>
+                <p className="ui-label">{usesApprovedTemplate ? `What ${shopName} will receive (the approved template)` : `What ${shopName} will see`}</p>
                 <div className="rounded-2xl p-3" style={{ background: 'var(--ui-surface-2)', border: '1px solid var(--ui-border)' }}>
                   <div className="ml-auto max-w-[92%] rounded-2xl px-3 py-3 text-sm" style={{ background: 'var(--ui-success-soft)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderBottomRightRadius: 4, overflowWrap: 'anywhere', lineHeight: 1.5 }}>
                     {image && (
                       <img src={pictureSrc(image)} alt="The picture that is sent with the message" className="w-full rounded-xl mb-2" style={{ maxHeight: 360, objectFit: 'cover', objectPosition: image.kind === 'flyer' ? 'top' : 'center' }} />
                     )}
-                    <div className="whitespace-pre-wrap px-1">{message.trim() || <span className="ui-muted">Your message is empty.</span>}</div>
+                    <div className="whitespace-pre-wrap px-1">{shownText.trim() || <span className="ui-muted">Your message is empty.</span>}</div>
                   </div>
                 </div>
               </div>

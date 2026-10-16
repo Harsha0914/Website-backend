@@ -151,7 +151,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
           if (image?.kind === 'library') imageId = image.id;
           else if (image?.kind === 'flyer') flyer = true;
         }
-        const res = await sendDirectWhatsAppPitch(item.shop, fillTemplate(message, { ...item.shop, name: item.name }), item.phone, flyer, { silent: true, imageId, templateKey: templateId });
+        const res = await sendDirectWhatsAppPitch(item.shop, fillTemplate(message, { ...item.shop, name: item.name }), item.phone, flyer, { silent: true, imageId, templateKey: templateId, customText: message !== getTemplate(templateId).body });
         if (res?.status === 'failed') throw new Error(res.error || 'The message could not be sent');
         patch(key, { status: res?.status === 'simulated' ? 'test' : 'sent', note: '' });
       } catch (err) {

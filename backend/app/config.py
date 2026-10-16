@@ -102,6 +102,11 @@ class Settings(BaseSettings):
     LAD_AUTH_PASSWORD: str = ""
     LAD_API_TOKEN: str = ""
     WHATSAPP_DEFAULT_TEMPLATE_NAME: str = "lexon_offer_link_v3"
+    # "Flexible" templates carry the user's OWN edited text as a first message to a shop that has not written in 24 hours.
+    # Each is an approved template whose body has two fill-in fields: {{1}} = the shop's name and {{2}} = the message text.
+    # Leave empty to keep using only the fixed approved templates.
+    WHATSAPP_FLEX_TEMPLATE_TEXT: str = ""        # name of the flexible template WITHOUT a picture header
+    WHATSAPP_FLEX_TEMPLATE_PICTURE: str = ""     # name of the flexible template WITH an image header
 
     # Meta WhatsApp Cloud API (direct fallback)
     WHATSAPP_ACCESS_TOKEN: str = ""
