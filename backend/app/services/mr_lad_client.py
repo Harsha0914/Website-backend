@@ -155,6 +155,33 @@ class MrLadWhatsAppClient:
                 return name, True
         return None, False
 
+    # A flexible template carries the user's own edited text: {{1}} = shop name, {{2}} = the message. WhatsApp does not allow
+    # line breaks, tabs or long runs of spaces inside a fill-in field, so the text is flattened onto one line.
+    FLEX_MAX_CHARS = 900
+
+    @classmethod
+    def pick_flexible(cls, with_picture: bool = False) -> Optional[str]:
+        """The approved flexible template for this kind of message, or None when none is configured / approved."""
+        name = (settings.WHATSAPP_FLEX_TEMPLATE_PICTURE if with_picture else settings.WHATSAPP_FLEX_TEMPLATE_TEXT) or ""
+        name = name.strip()
+        if not name:
+            return None
+        known = cls.list_templates()
+        if not known:  # the list could not be read: trust the configured name and let the gateway decide
+            return name
+        t = known.get(name) or {}
+        has_header = bool((t.get("header_type") or "").strip())
+        return name if t.get("status") == "APPROVED" and has_header == with_picture else None
+
+    @classmethod
+    def flatten_for_template(cls, text: str) -> str:
+        """The message on one line (line breaks become ' | '), as a fill-in field allows."""
+        parts = [line.strip() for line in str(text or "").replace("\r", "").split("\n")]
+        flat = " | ".join(p for p in parts if p)
+        while "    " in flat:
+            flat = flat.replace("    ", "   ")
+        return flat.replace("\t", " ").strip()
+
     @classmethod
     def render_template(cls, name: str, params: List[str]) -> str:
         """The wording a template message really carries, with its {{1}}, {{2}} filled in ('' if unknown)."""
@@ -491,6 +518,7 @@ class MrLadWhatsAppClient:
         image_url: Optional[str] = None,
         template_key: Optional[str] = None,
         image_header_url: Optional[str] = None,
+        custom_text: bool = False,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         Sends an outbound WhatsApp message via Mr LAD API.
@@ -511,6 +539,11 @@ class MrLadWhatsAppClient:
         # The template that carries the message the user chose (offer / about us). Nothing else is substituted.
         wants_picture = bool(image_url) and (bool(image_path) or send_flyer)
         chosen_template, _ready = cls.pick_template(template_key or cls.DEFAULT_KEY, with_picture=wants_picture)
+        # When the user changed the wording, send it through the flexible template (if one is approved) so THEIR text goes out
+        # even as a first message; otherwise the fixed approved template for the chosen message is used.
+        flex_template = cls.pick_flexible(wants_picture) if custom_text else None
+        if flex_template:
+            chosen_template = flex_template
 
         # Check for test mode or missing credentials
         has_creds = bool(settings.LAD_API_TOKEN or settings.LAD_AUTH_PASSWORD)
@@ -693,7 +726,12 @@ class MrLadWhatsAppClient:
             if not chosen_template:
                 return False, "The WhatsApp template for this message is not approved yet, so it cannot be sent to a shop that has not written to you.", {"mode": "template", "template": None}
             logger.info(f"[Mr LAD API] Template dispatch to {recipient} with template '{chosen_template}'...")
-            if template_parameters is not None:
+            if flex_template:
+                flat = cls.flatten_for_template(outbound_message)
+                if len(flat) > cls.FLEX_MAX_CHARS:
+                    return False, f"Your message is too long for a first message ({len(flat)} characters; the limit is {cls.FLEX_MAX_CHARS}). Shorten it, or wait until the shop replies.", {"mode": "template", "template": flex_template}
+                params_list = [display_name, flat]
+            elif template_parameters is not None:
                 params_list = template_parameters
             elif chosen_template in cls.TWO_NAME_TEMPLATES:
                 params_list = [display_name, display_name]
