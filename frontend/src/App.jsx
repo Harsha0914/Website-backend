@@ -18,6 +18,7 @@ import GoodWebsitesPage from './pages/shops/GoodWebsitesPage';
 import NeedsImprovementPage from './pages/shops/NeedsImprovementPage';
 import ShopDetailPage from './pages/shops/ShopDetailPage';
 import ChatPage from './pages/chat/ChatPage';
+import TemplatesPage from './pages/templates/TemplatesPage';
 import WhatsAppHubPage from './pages/whatsapp/WhatsAppHubPage';
 
 // Admin pages
@@ -142,6 +143,15 @@ export default function App() {
         element={
           <ProtectedRoute>
             <WhatsAppHubPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/templates"
+        element={
+          <ProtectedRoute>
+            <TemplatesPage />
           </ProtectedRoute>
         }
       />

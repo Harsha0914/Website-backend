@@ -44,8 +44,57 @@ export function getTemplate(id) {
   return WHATSAPP_TEMPLATES.find((t) => t.id === id) || WHATSAPP_TEMPLATES[0];
 }
 
-/** Put the shop's name into a template body. */
-export function fillTemplate(body, shopName) {
-  const name = (shopName || '').trim() || 'there';
-  return String(body || '').replace(/\{shop_name\}/g, name);
+// ── Personalising a message for a shop ─────────────────────────────────────────
+// Details a template (or your own edit of it) can use. Each one is filled in from the shop's own details:
+//   {shop_name}  the shop's name          {category}  what kind of business it is (cafe, salon ...)
+//   {city}       its town or city         {area}      the same as {city}, for wording like "in {area}"
+//   {address}    its address              {rating}    its rating, such as 4.3
+//   {owner_name} the owner, when known
+// A detail the shop does not have is replaced by a neutral word, so a message never shows a gap or a raw {tag}.
+
+const GENERIC_CATEGORY = /^(local[\s_-]*)?(shop|store|business|establishment|point[\s_-]*of[\s_-]*interest)$/i;
+
+/** The shop's details as plain text, from a business object (or just a name). */
+export function shopDetails(shop) {
+  const s = typeof shop === 'string' ? { name: shop } : (shop || {});
+  const clean = (v) => String(v ?? '').replace(/_/g, ' ').trim();
+  const category = clean(s.category || s.business_type || s.type).toLowerCase();
+  const city = clean(s.city || s.area || s.locality);
+  return {
+    shop_name: clean(s.name || s.shop_name),
+    category: category && !GENERIC_CATEGORY.test(category) ? category : '',
+    city,
+    area: city,
+    address: clean(s.address || s.short_address),
+    rating: s.rating ? Number(s.rating).toFixed(1) : '',
+    owner_name: clean(s.owner_name || s.owner),
+  };
+}
+
+const FALLBACKS = { shop_name: 'there', category: 'business', city: 'your area', area: 'your area', address: '', rating: '', owner_name: 'there' };
+
+/** Put the shop's details into a template body. `shop` can be a business object or just a name. */
+export function fillTemplate(body, shop) {
+  const details = shopDetails(shop);
+  return String(body || '').replace(/\{\s*([a-z_]+)\s*\}/gi, (whole, tag) => {
+    const key = tag.toLowerCase();
+    if (!(key in FALLBACKS)) return whole;           // not one of ours: leave the text exactly as written
+    return details[key] || FALLBACKS[key];
+  });
+}
+
+const GREETING = /^\s*(?:hello|hi|hey|dear|greetings)[\s,]+([^\n,!.:;{}]{2,60}?)\s*[,!:]/i;
+
+/**
+ * A message pasted in that was written for ANOTHER shop ("Hello Sunrise Bakery, ...") gets that shop's name swapped
+ * for this one's everywhere it appears. `replacement` is the current shop's name (or "{shop_name}" in the many-shops
+ * box). The text is returned unchanged when no other shop's name is found.
+ */
+export function personalizePasted(text, replacement) {
+  const match = GREETING.exec(String(text || ''));
+  if (!match) return text;
+  const found = match[1].trim();
+  if (!found || /^(there|team|sir|madam|all|friend|everyone|owner|shop|your shop)$/i.test(found)) return text;
+  if (found.toLowerCase() === String(replacement || '').toLowerCase()) return text;
+  return String(text).split(found).join(replacement);
 }

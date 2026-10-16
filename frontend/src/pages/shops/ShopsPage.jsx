@@ -19,6 +19,7 @@ import {
   Zap,
   Key,
   MessageCircle,
+  FileText,
   Send,
   Bot,
   Star,
@@ -26,6 +27,7 @@ import {
   AlertCircle,
   Ruler,
 } from 'lucide-react';
+import { todayIST } from '../../utils/time';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
 import MobileBottomNav from '../../components/layout/MobileBottomNav';
@@ -353,11 +355,25 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   <span className="results-source"><MapPin className="h-3.5 w-3.5" aria-hidden="true" />Shop details from {sourceLabel}</span>
                 )}
                 {dailyLimit.available && dailyLimit.limit > 0 && (
-                  <span className={`results-source ${dailyLimit.reached || (dailyLimit.warnAt > 0 && dailyLimit.sentToday >= dailyLimit.warnAt) ? 'is-warn' : ''}`}>
+                  <button
+                    type="button"
+                    className={`results-source results-source-link ${dailyLimit.reached || (dailyLimit.warnAt > 0 && dailyLimit.sentToday >= dailyLimit.warnAt) ? 'is-warn' : ''}`}
+                    onClick={() => navigate(`/whatsapp?day=${todayIST()}&span=1`)}
+                    title="Open the chats of the contacts messaged today"
+                  >
                     <Send className="h-3.5 w-3.5" aria-hidden="true" />
                     Shared today: {dailyLimit.sentToday} of {dailyLimit.limit} contacts{dailyLimit.reached ? ' · limit reached' : Number.isFinite(dailyLimit.remaining) ? ` · ${dailyLimit.remaining} left` : ''}
-                  </span>
+                  </button>
                 )}
+                <button
+                  type="button"
+                  className="results-source results-source-link"
+                  onClick={() => navigate('/templates')}
+                  title="Open your message templates to read or change their text"
+                >
+                  <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                  Templates
+                </button>
               </div>
             </div>
             <div className="results-actions">
@@ -698,11 +714,17 @@ export default function ShopsPage({ defaultTab = 'all' }) {
             </div>
 
             <div className="qs-foot">
-              <button type="button" className="ui-btn ui-btn-secondary" onClick={() => setShowModifyModal(false)}>Cancel</button>
-              <button type="button" className="ui-btn ui-btn-primary qs-next" onClick={handleApplyModify}>
-                <Search className="h-4 w-4" aria-hidden="true" />
-                Show shops
-              </button>
+              <p className="cs-summary">
+                <strong>{tempCategory || 'All Categories'}</strong> within <strong>{tempRadius < 1 ? `${tempRadius * 1000} m` : `${tempRadius} km`}</strong> of{' '}
+                <strong>{tempSearchCenter?.type === 'gps' ? 'your current location' : tempSearchCenter?.name || 'the chosen place'}</strong>
+              </p>
+              <div className="cs-actions">
+                <button type="button" className="ui-btn ui-btn-secondary" onClick={() => setShowModifyModal(false)}>Cancel</button>
+                <button type="button" className="ui-btn ui-btn-primary qs-next" onClick={handleApplyModify}>
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                  Show shops
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@ import {
   Search,
   List,
   MessageCircle,
+  FileText,
   LogIn,
   UserPlus,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ export default function MobileBottomNav() {
         { path: '/dashboard', icon: Search,        label: 'Find shops' },
         { path: '/shops',     icon: List,          label: 'Results' },
         { path: '/whatsapp',  icon: MessageCircle, label: 'WhatsApp' },
+        { path: '/templates', icon: FileText,      label: 'Templates' },
       ]
     : [
         { path: '/login',     icon: LogIn,         label: 'Sign in' },

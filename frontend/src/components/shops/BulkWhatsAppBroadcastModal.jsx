@@ -6,7 +6,7 @@ import {
   MinusCircle, Pause, RotateCcw, MessageCircle, Play, Phone, ArrowRight, Users,
 } from 'lucide-react';
 import { sendDirectWhatsAppPitch, formatPhoneNumber } from '../../services/whatsappService';
-import { WHATSAPP_TEMPLATES, DEFAULT_TEMPLATE_ID, getTemplate, fillTemplate } from '../../services/whatsappTemplates';
+import { WHATSAPP_TEMPLATES, DEFAULT_TEMPLATE_ID, getTemplate, fillTemplate, personalizePasted } from '../../services/whatsappTemplates';
 import { getSavedMessage, saveMessage, clearSavedMessage, syncSavedMessages } from '../../services/savedMessages';
 import MessageImagePicker, { FLYER_VALUE, pictureSrc } from '../whatsapp/MessageImagePicker';
 import { imageCategoryFor, dominantImageCategory } from '../../utils/imageTools';
@@ -151,7 +151,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
           if (image?.kind === 'library') imageId = image.id;
           else if (image?.kind === 'flyer') flyer = true;
         }
-        const res = await sendDirectWhatsAppPitch(item.shop, fillTemplate(message, item.name), item.phone, flyer, { silent: true, imageId, templateKey: templateId });
+        const res = await sendDirectWhatsAppPitch(item.shop, fillTemplate(message, { ...item.shop, name: item.name }), item.phone, flyer, { silent: true, imageId, templateKey: templateId });
         if (res?.status === 'failed') throw new Error(res.error || 'The message could not be sent');
         patch(key, { status: res?.status === 'simulated' ? 'test' : 'sent', note: '' });
       } catch (err) {
@@ -235,6 +235,16 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
     setMessage(text);
     saveMessage(templateId, text);
   };
+  // Pasting a message that was written for one shop turns that shop's name into {shop_name}, so it fits every shop.
+  const handlePaste = (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    if (pasted.length < 30) return;
+    const fixed = personalizePasted(pasted, '{shop_name}');
+    if (fixed === pasted) return;
+    e.preventDefault();
+    const box = e.target;
+    editMessage(message.slice(0, box.selectionStart) + fixed + message.slice(box.selectionEnd));
+  };
   const originalBody = getTemplate(templateId).body;
   const backToOriginal = () => {
     clearSavedMessage(templateId);
@@ -246,6 +256,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
   const selectedCount = selected.size;
   const firstSelected = contacts.find((c) => selected.has(c.key));
   const previewName = firstSelected?.name || 'Shop name';
+  const previewShop = firstSelected ? { ...firstSelected.shop, name: firstSelected.name } : 'Shop name';
   const minutesLeft = Math.max(1, Math.ceil(((counts.pending + counts.sending) * SECONDS_PER_CONTACT) / 60));
   const current = queue.find((q) => q.status === 'sending');
   const finished = step === 'send' && !running && counts.pending === 0 && counts.sending === 0;
@@ -406,8 +417,8 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
 
               <div>
                 <label htmlFor="bulk-message" className="ui-label">Message <span className="ui-muted">(you can edit it)</span></label>
-                <textarea id="bulk-message" value={message} onChange={(e) => editMessage(e.target.value)} rows={8} className="ui-input" style={{ lineHeight: 1.55, resize: 'vertical', minHeight: 150 }} />
-                <p className="ui-help mt-1">The text <code>{'{shop_name}'}</code> is replaced with each shop's own name. Your latest wording is saved and shown here next time.</p>
+                <textarea id="bulk-message" value={message} onChange={(e) => editMessage(e.target.value)} onPaste={handlePaste} rows={8} className="ui-input" style={{ lineHeight: 1.55, resize: 'vertical', minHeight: 150 }} />
+                <p className="ui-help mt-1">Each shop's own details are filled in: <code>{'{shop_name}'}</code>, <code>{'{category}'}</code>, <code>{'{city}'}</code>. Your latest wording is saved and shown here next time.</p>
                 {message !== originalBody && (
                   <button type="button" onClick={backToOriginal} className="ui-btn ui-btn-ghost ui-btn-sm mt-1">
                     <RotateCcw className="h-4 w-4" aria-hidden="true" />
@@ -448,7 +459,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                     {image && (
                       <img src={pictureSrc(image)} alt="The picture that is sent with the message" className="w-full rounded-xl mb-2" style={{ maxHeight: 360, objectFit: 'cover', objectPosition: image.kind === 'flyer' ? 'top' : 'center' }} />
                     )}
-                    <div className="whitespace-pre-wrap px-1">{fillTemplate(message, previewName).trim() || <span className="ui-muted">Your message is empty.</span>}</div>
+                    <div className="whitespace-pre-wrap px-1">{fillTemplate(message, previewShop).trim() || <span className="ui-muted">Your message is empty.</span>}</div>
                   </div>
                 </div>
               </div>
