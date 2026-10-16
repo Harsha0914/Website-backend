@@ -70,9 +70,12 @@ export async function syncSavedMessages() {
   }
 }
 
-/** Turn a message written for one shop back into reusable wording: that shop's name becomes {shop_name}. */
-export function toReusable(text, shopName) {
-  const name = (shopName || '').trim();
-  if (!name || name === 'your shop' || name === 'there') return text;
-  return String(text).split(name).join('{shop_name}');
+/** Turn a message written for one shop back into reusable wording: that shop's name and city become {shop_name} / {city}. */
+export function toReusable(text, shop) {
+  const name = String((typeof shop === 'string' ? shop : (shop?.name || shop?.shop_name)) || '').trim();
+  const city = typeof shop === 'object' && shop ? String(shop.city || shop.area || '').trim() : '';
+  let result = String(text);
+  if (name && name !== 'your shop' && name !== 'there') result = result.split(name).join('{shop_name}');
+  if (city.length >= 4) result = result.split(city).join('{city}');
+  return result;
 }

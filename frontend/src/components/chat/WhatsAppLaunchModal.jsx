@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { X, Check, ArrowLeft, Copy, Loader2, Send, AlertCircle, MessageCircle, FileText, Link2, Building2, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatPhoneNumber, sendDirectWhatsAppPitch, getWhatsAppSendMode } from '../../services/whatsappService';
-import { WHATSAPP_TEMPLATES, getTemplate, fillTemplate } from '../../services/whatsappTemplates';
+import { WHATSAPP_TEMPLATES, getTemplate, fillTemplate, personalizePasted } from '../../services/whatsappTemplates';
 import MessageImagePicker, { FLYER_VALUE, pictureSrc } from '../whatsapp/MessageImagePicker';
 import { imageCategoryFor } from '../../utils/imageTools';
 
@@ -36,6 +36,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const phoneDisplay = phoneDigits ? `+${phoneDigits}` : '';
 
   const [step, setStep] = useState('choose'); // 'choose' | 'edit' | 'sent'
+  const [, setSavedTick] = useState(0);     // bumped when the saved wording arrives, so the template cards redraw
   const [templateId, setTemplateId] = useState(null);
   const [message, setMessage] = useState('');
   const [image, setImage] = useState(null); // null = text only, or { kind: 'flyer' } / { kind: 'library', id, ... }
@@ -48,7 +49,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const dialogRef = useRef(null);
 
   useEffect(() => {
-    if (isOpen) syncSavedMessages();      // bring the wording saved on the account to this device before a message is chosen
+    if (isOpen) syncSavedMessages().then(() => setSavedTick((n) => n + 1));   // fetch the wording saved on the account, then redraw the cards with it
   }, [isOpen]);
 
   useEffect(() => {
@@ -87,13 +88,25 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   if (!isOpen || !business) return null;
 
   const template = templateId ? getTemplate(templateId) : null;
-  const filledTemplate = template ? fillTemplate(template.body, shopName) : '';
+  const shop = business || shopName;      // everything we know about the shop, so every detail can be filled in
+  const filledTemplate = template ? fillTemplate(template.body, shop) : '';
   const edited = template && message !== filledTemplate;
 
   // Whatever the user last wrote for this message type is shown again, until they change it.
   const editMessage = (text) => {
     setMessage(text);
-    if (templateId) saveMessage(templateId, toReusable(text, shopName));
+    if (templateId) saveMessage(templateId, toReusable(text, shop));
+  };
+
+  // Pasting a message that was written for another shop swaps that shop's name for this one's.
+  const handlePaste = (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    if (pasted.length < 30) return;
+    const fixed = personalizePasted(pasted, shopName);
+    if (fixed === pasted) return;
+    e.preventDefault();
+    const box = e.target;
+    editMessage(message.slice(0, box.selectionStart) + fixed + message.slice(box.selectionEnd));
   };
 
   const backToOriginal = () => {
@@ -104,7 +117,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const chooseTemplate = (t) => {
     setTemplateId(t.id);
     const saved = getSavedMessage(t.id);
-    setMessage(fillTemplate(saved || t.body, shopName));
+    setMessage(fillTemplate(saved || t.body, shop));
     // keep a picture the user already chose; otherwise start from the template's default
     setImage((current) => current ?? (t.includeFlyer ? FLYER_VALUE : null));
     setError('');
@@ -206,7 +219,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
               <ul className="space-y-3" role="list">
                 {WHATSAPP_TEMPLATES.map((t) => {
                   const Icon = TEMPLATE_ICONS[t.id] || FileText;
-                  const preview = fillTemplate(t.body, shopName).split('\n').filter(Boolean).slice(0, 3).join(' ');
+                  const preview = fillTemplate(getSavedMessage(t.id) || t.body, shop).split('\n').filter(Boolean).slice(0, 3).join(' ');
                   return (
                     <li key={t.id}>
                       <button
@@ -247,6 +260,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
                   id="wa-message"
                   value={message}
                   onChange={(e) => editMessage(e.target.value)}
+                  onPaste={handlePaste}
                   rows={9}
                   className="ui-input"
                   style={{ lineHeight: 1.55, resize: 'vertical', minHeight: 160 }}
