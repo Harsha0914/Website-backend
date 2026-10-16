@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+import re
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -157,7 +158,21 @@ class MrLadWhatsAppClient:
 
     # A flexible template carries the user's own edited text: {{1}} = shop name, {{2}} = the message. WhatsApp does not allow
     # line breaks, tabs or long runs of spaces inside a fill-in field, so the text is flattened onto one line.
-    FLEX_MAX_CHARS = 900
+    FLEX_BODY_LIMIT = 1024   # WhatsApp: a template body, with its fill-in fields filled, may not be longer than this
+    FLEX_SAFETY = 5          # a few characters of room so a rounding or emoji difference never tips it over
+
+    @classmethod
+    def flex_fixed_chars(cls, name: str) -> int:
+        """How many characters the flexible template itself uses around the two fill-in fields (its own wording)."""
+        body = (cls.list_templates().get(name) or {}).get("body") or ""
+        if body:
+            return len(re.sub(r"\{\{\s*\d+\s*\}\}", "", body))
+        return 70                     # the wording we asked for, if the gateway does not return the body
+
+    @classmethod
+    def flex_message_room(cls, name: str, shop_name: str) -> int:
+        """How many characters the user's message may have once it is on one line, for this shop."""
+        return cls.FLEX_BODY_LIMIT - cls.flex_fixed_chars(name) - len(shop_name or "") - cls.FLEX_SAFETY
 
     @classmethod
     def pick_flexible(cls, with_picture: bool = False) -> Optional[str]:
@@ -728,8 +743,9 @@ class MrLadWhatsAppClient:
             logger.info(f"[Mr LAD API] Template dispatch to {recipient} with template '{chosen_template}'...")
             if flex_template:
                 flat = cls.flatten_for_template(outbound_message)
-                if len(flat) > cls.FLEX_MAX_CHARS:
-                    return False, f"Your message is too long for a first message ({len(flat)} characters; the limit is {cls.FLEX_MAX_CHARS}). Shorten it, or wait until the shop replies.", {"mode": "template", "template": flex_template}
+                room = cls.flex_message_room(flex_template, display_name)
+                if len(flat) > room:
+                    return False, f"Your message is too long for a first message ({len(flat)} characters; WhatsApp allows {room} here). Shorten it by {len(flat) - room} characters, or wait until the shop replies.", {"mode": "template", "template": flex_template}
                 params_list = [display_name, flat]
             elif template_parameters is not None:
                 params_list = template_parameters

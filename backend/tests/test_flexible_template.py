@@ -29,3 +29,19 @@ def test_text_is_flattened_to_one_line_for_a_fill_in_field():
     flat = Lad.flatten_for_template("Hello Prime Cafe,\n\nLine two\tends\r\n  \nLine three      spaced")
     assert "\n" not in flat and "\t" not in flat and "    " not in flat
     assert flat.startswith("Hello Prime Cafe, | Line two") and flat.endswith("Line three   spaced")
+
+
+def test_the_room_for_a_first_message_is_worked_out_from_the_template_itself(monkeypatch):
+    body = "Message from Lexon IT for {{1}}:\n\n{{2}}\n\n- Team Lexon IT"          # 52 characters around the two fill-in fields
+    _known(monkeypatch, lexon_custom_text={"status": "APPROVED", "header_type": "", "body": body})
+    fixed = Lad.flex_fixed_chars("lexon_custom_text")
+    assert fixed == len(body) - len("{{1}}") - len("{{2}}")
+    room = Lad.flex_message_room("lexon_custom_text", "Maxx Cycle World")
+    assert room == 1024 - fixed - len("Maxx Cycle World") - Lad.FLEX_SAFETY
+    # a message of 1057 characters (flattened) does not fit; one of 900 does
+    assert 1057 > room > 900 - 1
+
+
+def test_when_the_template_body_is_unknown_a_safe_default_is_used(monkeypatch):
+    _known(monkeypatch)
+    assert Lad.flex_fixed_chars("anything") == 70

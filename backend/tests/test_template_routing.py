@@ -161,7 +161,7 @@ def test_send_mode_tells_the_dialog_how_the_message_will_really_go(client, db_se
 
     monkeypatch.setattr(Lad, "window_open", classmethod(lambda cls, conv, token: False))
     cold = client.get("/api/ai-whatsapp/send-mode?phone=919876543210&template_key=offer-link&picture=true", headers=headers).json()
-    assert cold == {"mode": "template", "template": "lexon_offer_link_v4", "template_ready": True, "with_picture": True, "flexible_template": None}
+    assert cold == {"mode": "template", "template": "lexon_offer_link_v4", "template_ready": True, "with_picture": True, "flexible_template": None, "flexible_fixed_chars": None}
     plain = client.get("/api/ai-whatsapp/send-mode?phone=919876543210&template_key=about-company", headers=headers).json()
     assert plain["template"] == "lexon_about_company_v3" and plain["with_picture"] is False
 
