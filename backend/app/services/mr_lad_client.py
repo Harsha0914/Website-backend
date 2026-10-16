@@ -169,6 +169,42 @@ class MrLadWhatsAppClient:
             return len(re.sub(r"\{\{\s*\d+\s*\}\}", "", body))
         return 70                     # the wording we asked for, if the gateway does not return the body
 
+    FLEX_MAX_PARTS = 3       # a long message is sent as at most this many numbered messages
+
+    @classmethod
+    def split_for_template(cls, text: str, room: int) -> Optional[List[str]]:
+        """
+        The message as one line per template message. A message that fits is one part. A longer one is cut at its line breaks into
+        numbered parts "... (1/2)", "... (2/2)", each short enough for one template message. None if even that is too long.
+        """
+        lines = [l.strip() for l in str(text or "").replace("\r", "").split("\n") if l.strip()]
+        if len(" | ".join(lines)) <= room:
+            return [cls.flatten_for_template(text)]
+        limit = max(50, room - 8)                  # room for the " (1/3)" mark
+        parts: List[str] = []
+        cur = ""
+        for line in lines:
+            while len(line) > limit:               # one very long line: cut it at the last space that fits
+                cut = line.rfind(" ", 0, limit)
+                cut = cut if cut > 0 else limit
+                piece, line = line[:cut].strip(), line[cut:].strip()
+                if cur:
+                    parts.append(cur)
+                    cur = ""
+                parts.append(piece)
+            candidate = f"{cur} | {line}" if cur else line
+            if len(candidate) <= limit:
+                cur = candidate
+            else:
+                parts.append(cur)
+                cur = line
+        if cur:
+            parts.append(cur)
+        if len(parts) > cls.FLEX_MAX_PARTS:
+            return None
+        n = len(parts)
+        return [f"{p} ({i}/{n})" if n > 1 else p for i, p in enumerate(parts, 1)]
+
     @classmethod
     def flex_message_room(cls, name: str, shop_name: str) -> int:
         """How many characters the user's message may have once it is on one line, for this shop."""
@@ -741,12 +777,14 @@ class MrLadWhatsAppClient:
             if not chosen_template:
                 return False, "The WhatsApp template for this message is not approved yet, so it cannot be sent to a shop that has not written to you.", {"mode": "template", "template": None}
             logger.info(f"[Mr LAD API] Template dispatch to {recipient} with template '{chosen_template}'...")
+            extra_parts: List[str] = []
             if flex_template:
-                flat = cls.flatten_for_template(outbound_message)
                 room = cls.flex_message_room(flex_template, display_name)
-                if len(flat) > room:
-                    return False, f"Your message is too long for a first message ({len(flat)} characters; WhatsApp allows {room} here). Shorten it by {len(flat) - room} characters, or wait until the shop replies.", {"mode": "template", "template": flex_template}
-                params_list = [display_name, flat]
+                parts = cls.split_for_template(outbound_message, room)
+                if parts is None:
+                    return False, f"Your message is too long to send as a first message, even split into {cls.FLEX_MAX_PARTS} parts. Shorten it, or wait until the shop replies.", {"mode": "template", "template": flex_template}
+                params_list = [display_name, parts[0]]
+                extra_parts = parts[1:]
             elif template_parameters is not None:
                 params_list = template_parameters
             elif chosen_template in cls.TWO_NAME_TEMPLATES:
@@ -785,6 +823,31 @@ class MrLadWhatsAppClient:
             if not msg_id:
                 msg_id = f"wamid.LAD_{uuid.uuid4().hex[:12]}"
             logger.info(f"[Mr LAD API] Sent template '{chosen_template}' to {recipient} (ID: {msg_id})")
+            # A long message goes as numbered parts: the rest follow the first, one after another, through the text-only flexible template.
+            parts_note = None
+            for index, part in enumerate(extra_parts, start=2):
+                time.sleep(1.0)
+                next_template = cls.pick_flexible(False) or chosen_template
+                next_payload: Dict[str, Any] = {
+                    "members": [{"phone": recipient, "name": display_name, "params": [display_name, part], "text": outbound_message}],
+                    "template_name": next_template,
+                    "language_code": language_code,
+                }
+                if next_template == chosen_template and "header_url" in init_payload:
+                    next_payload["header_type"] = init_payload["header_type"]
+                    next_payload["header_url"] = init_payload["header_url"]
+                try:
+                    res_more = _post(f"{api_base}/api/conversations/send-template-to-members", next_payload)
+                    more = res_more.json() if res_more.headers.get("content-type", "").startswith("application/json") else {}
+                    more_rows = more.get("results", [])
+                    if res_more.status_code != 200 or (more_rows and more_rows[0].get("status") == "failed"):
+                        parts_note = f"Part {index} of {len(extra_parts) + 1} was not delivered."
+                        logger.error(f"[Mr LAD API] {parts_note} {res_more.status_code} {str(more)[:200]}")
+                        break
+                except Exception as part_err:
+                    parts_note = f"Part {index} of {len(extra_parts) + 1} was not delivered."
+                    logger.error(f"[Mr LAD API] {parts_note} {part_err}")
+                    break
             if sync_admin_copy and not cls._is_admin_copy_number(recipient):
                 cls.sync_to_admin(outbound_message, display_name, recipient, send_flyer=send_flyer)
             try:
@@ -797,6 +860,10 @@ class MrLadWhatsAppClient:
                 logger.warning(f"[Mr LAD] could not add the wording note: {note_err}")
             if isinstance(init_data, dict):
                 init_data = {**init_data, "mode": "template", "template": chosen_template}
+                if extra_parts:
+                    init_data["parts"] = len(extra_parts) + 1
+                if parts_note:
+                    init_data["warning"] = parts_note
             return True, msg_id, init_data
 
         except Exception as e:

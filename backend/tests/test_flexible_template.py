@@ -45,3 +45,19 @@ def test_the_room_for_a_first_message_is_worked_out_from_the_template_itself(mon
 def test_when_the_template_body_is_unknown_a_safe_default_is_used(monkeypatch):
     _known(monkeypatch)
     assert Lad.flex_fixed_chars("anything") == 70
+
+
+def test_a_long_message_is_split_into_numbered_parts_at_its_line_breaks():
+    room = 400
+    text = "\n".join(f"Line number {i} " + "word " * 12 for i in range(1, 15))       # far longer than one message
+    parts = Lad.split_for_template(text, room)
+    assert parts is not None and 1 < len(parts) <= Lad.FLEX_MAX_PARTS
+    assert all(len(p) <= room for p in parts)
+    assert parts[0].endswith(f"(1/{len(parts)})") and parts[-1].endswith(f"({len(parts)}/{len(parts)})")
+    joined = " ".join(parts)
+    assert "Line number 1 " in joined and "Line number 14 " in joined               # nothing is lost
+
+
+def test_a_short_message_stays_one_part_and_a_huge_one_is_refused():
+    assert Lad.split_for_template("Hello\n\nthere", 900) == ["Hello | there"]
+    assert Lad.split_for_template("x " * 5000, 900) is None                         # more than 3 parts: shorten it
