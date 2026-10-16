@@ -124,3 +124,32 @@ export function firstMessageRoom(text, fixedChars, shopName) {
   const room = FLEX_BODY_LIMIT - (fixedChars ?? 70) - String(shopName || '').length - 5;
   return { used, room, over: used - room };
 }
+
+/**
+ * The message as the numbered parts it will go out in as a first message (the same cut as the server makes), or null when even
+ * three parts are not enough. One part means it fits as it is.
+ */
+export function firstMessageParts(text, fixedChars, shopName, maxParts = 3) {
+  const room = FLEX_BODY_LIMIT - (fixedChars ?? 70) - String(shopName || '').length - 5;
+  const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.join(' | ').length <= room) return [flattenForTemplate(text)];
+  const limit = Math.max(50, room - 8);
+  const parts = [];
+  let cur = '';
+  for (let line of lines) {
+    while (line.length > limit) {
+      let cut = line.lastIndexOf(' ', limit - 1);
+      cut = cut > 0 ? cut : limit;
+      const piece = line.slice(0, cut).trim();
+      line = line.slice(cut).trim();
+      if (cur) { parts.push(cur); cur = ''; }
+      parts.push(piece);
+    }
+    const candidate = cur ? `${cur} | ${line}` : line;
+    if (candidate.length <= limit) cur = candidate;
+    else { parts.push(cur); cur = line; }
+  }
+  if (cur) parts.push(cur);
+  if (parts.length > maxParts) return null;
+  return parts.length > 1 ? parts.map((p, i) => `${p} (${i + 1}/${parts.length})`) : parts;
+}
