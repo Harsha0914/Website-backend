@@ -638,26 +638,30 @@ body {
   background: color-mix(in srgb, var(--tone, #94a3b8) 14%, transparent); border-radius: 12px;
 }
 
-/* ── Change search dialog ─────────────────────────────────────────────────── */
-.cs-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 20px 20px; }
-.cs-section { padding: 16px 0; }
-.cs-section + .cs-section { border-top: 1px solid var(--ui-border); }
-.cs-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.cs-sec-title { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ui-muted); }
-.cs-sec-title svg { color: var(--ui-primary); }
-.cs-link { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 0.84rem; font-weight: 650; color: var(--ui-primary-text); background: var(--ui-primary-soft); border: 0; border-radius: 999px; cursor: pointer; }
-.cs-link:hover:not(:disabled) { background: color-mix(in srgb, var(--ui-primary) 22%, transparent); }
+/* ── Change search dialog: each setting is its own white card on a soft grey sheet ───────────────── */
+.cs-body { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 20px 22px; display: grid; gap: 14px; align-content: start; background: #f4f6fb; }
+.cs-section { padding: 16px 16px 18px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 16px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.cs-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.cs-sec-title { display: inline-flex; align-items: center; gap: 10px; margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ui-text-2); }
+.cs-sec-title svg { box-sizing: content-box; width: 16px; height: 16px; padding: 7px; color: var(--ui-primary); background: var(--ui-primary-soft); border-radius: 10px; }
+.cs-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.84rem; font-weight: 650; color: var(--ui-primary-text); background: var(--ui-surface); border: 1px solid color-mix(in srgb, var(--ui-primary) 35%, transparent); border-radius: 999px; cursor: pointer; transition: background .15s, box-shadow .15s; }
+.cs-link:hover:not(:disabled) { background: var(--ui-primary-soft); box-shadow: 0 4px 12px -6px rgba(79, 70, 229, .5); }
+.cs-link:disabled { opacity: .6; cursor: progress; }
 .cs-hint { margin: 14px 0 8px; font-size: 0.8rem; color: var(--ui-muted); }
 .cs-places { display: flex; flex-wrap: wrap; gap: 8px; }
-.cs-value { padding: 3px 12px; font-size: 0.84rem; font-weight: 700; color: var(--ui-primary-text); background: var(--ui-primary-soft); border-radius: 999px; }
-.cs-radius { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.cs-value { padding: 4px 12px; font-size: 0.84rem; font-weight: 700; color: #fff; background: linear-gradient(135deg, #4f46e5, #6d28d9); border-radius: 999px; }
+.cs-radius { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; background: #eceff6; border-radius: 14px; }
 .cs-radius button {
-  min-height: 42px; font-size: 0.9rem; font-weight: 650; color: var(--ui-text-2); cursor: pointer;
-  background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: 12px; transition: background .15s, border-color .15s, color .15s;
+  min-height: 40px; font-size: 0.88rem; font-weight: 650; color: var(--ui-text-2); cursor: pointer;
+  background: transparent; border: 0; border-radius: 10px; transition: background .15s, color .15s, box-shadow .15s;
 }
-.cs-radius button:hover { border-color: var(--ui-primary); background: var(--ui-surface-2); }
-.cs-radius button[aria-pressed="true"] { color: var(--ui-primary-text); background: var(--ui-primary-soft); border-color: var(--ui-primary); box-shadow: 0 0 0 1px var(--ui-primary); }
-.cs-modal .qs-foot { justify-content: flex-end; }
+.cs-radius button:hover { color: var(--ui-text); background: rgba(255, 255, 255, .6); }
+.cs-radius button[aria-pressed="true"] { color: var(--ui-primary-text); background: var(--ui-surface); box-shadow: 0 1px 3px rgba(15, 23, 42, .16), 0 0 0 1px rgba(79, 70, 229, .14); }
+.cs-modal .qs-foot { justify-content: space-between; background: var(--ui-surface); }
+.cs-summary { min-width: 0; flex: 1; font-size: 0.84rem; line-height: 1.35; color: var(--ui-text-2); }
+.cs-summary strong { color: var(--ui-text); font-weight: 650; }
+.cs-actions { display: flex; gap: 10px; margin-left: auto; }
+@media (max-width: 520px) { .cs-summary { display: none; } .cs-actions { width: 100%; } .cs-actions > * { flex: 1; } }
 
 /* ── WhatsApp page ─────────────────────────────────────────────────────────── */
 .wa-hero { padding-bottom: 44px !important; }
@@ -676,6 +680,8 @@ body {
 }
 .wa-period:hover { transform: translateY(-1px); border-color: var(--ui-border-strong); }
 .wa-period.is-now { border-color: var(--ui-primary); box-shadow: 0 0 0 1px var(--ui-primary), 0 14px 28px -16px rgba(79,70,229,.55); }
+.results-source-link { cursor: pointer; font: inherit; transition: background .15s, transform .15s; }
+.results-source-link:hover { background: rgba(255, 255, 255, .26); transform: translateY(-1px); }
 .wa-period-link { cursor: pointer; }
 .wa-period-link:focus-visible { outline: 3px solid rgba(79, 70, 229, .35); outline-offset: 2px; }
 .wa-period-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
