@@ -162,7 +162,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
     if (!message.trim()) return;
     setTestState({ busy: true, ok: '', error: '' });
     try {
-      await sendDirectWhatsAppPitch({ name: 'My test number' }, message.trim(), digits, image?.kind === 'flyer', {
+      await sendDirectWhatsAppPitch({ name: 'My test number' }, message.trim(), digits, image?.kind === 'flyer', { isTest: true,
         imageId: image?.kind === 'library' ? image.id : null,
         silent: true,
       });

@@ -70,6 +70,7 @@ class BulkWhatsAppBroadcastSchema(BaseModel):
     include_flyer: Optional[bool] = True
     image_id: Optional[int] = None   # a picture from the signed-in account's own library
     template_key: Optional[str] = None  # 'offer-link' | 'about-company': which message the user chose
+    is_test: Optional[bool] = False  # a test sent to the user's OWN number: it may be repeated as often as wanted (no 30-day wait)
     custom_text: Optional[bool] = False  # the user changed the wording: send it through the flexible template when one is approved
 
 class MessageSendSchema(BaseModel):
@@ -601,6 +602,16 @@ class SavedMessageBody(BaseModel):
     text: str = ""
 
 
+def _is_known_shop_number(db: Session, phone: str) -> bool:
+    """True when this number belongs to a shop we have found (so it is a real shop, not someone's own test number)."""
+    from sqlalchemy import func
+    key = "".join(c for c in str(phone or "") if c.isdigit())[-10:]
+    if len(key) < 10:
+        return False
+    cleaned = func.replace(func.replace(func.replace(func.replace(Business.phone, " ", ""), "-", ""), "+", ""), "(", "")
+    return db.query(Business.id).filter(Business.phone.isnot(None), cleaned.like(f"%{key}")).first() is not None
+
+
 @router.get("/saved-messages")
 def get_saved_messages(current_user=Depends(get_current_user)):
     """The wording this account last saved for each message type: {template_id: text}."""
@@ -799,7 +810,10 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
             continue
         seen_phones.add(norm_phone)
 
-        allowed, reason = can_message(db, norm_phone, owner_id=current_user.id, check_cooldown=True)
+        # A test to the user's own number can be repeated any number of times. The 30-day wait stays for every real shop: a number
+        # that belongs to a shop in the database is never treated as a test, whatever the request says.
+        skip_wait = bool(payload.is_test) and not _is_known_shop_number(db, norm_phone)
+        allowed, reason = can_message(db, norm_phone, owner_id=current_user.id, check_cooldown=not skip_wait)
         if not allowed:
             _skip(reason or "blocked")
             continue
