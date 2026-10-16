@@ -71,14 +71,25 @@ export function shopDetails(shop) {
   };
 }
 
-const FALLBACKS = { shop_name: 'there', category: 'business', city: 'your area', area: 'your area', address: '', rating: '', owner_name: 'there' };
+const FALLBACKS = { shop_name: 'there', category: 'business', city: 'your area', area: 'your area', address: '', rating: '', owner_name: 'there', products: 'products and services' };
+
+// The ways a tag may be written. Spelling, capitals, spaces and punctuation do not matter, so {shop_name}, {Shop Name},
+// {shopname} and {Business Name} all mean the same thing.
+const TAG_ALIASES = {
+  shopname: 'shop_name', businessname: 'shop_name', storename: 'shop_name', name: 'shop_name', shop: 'shop_name', store: 'shop_name', business: 'shop_name',
+  category: 'category', businesstype: 'category', shoptype: 'category', businesscategory: 'category', type: 'category',
+  city: 'city', town: 'city', location: 'city', locality: 'city', place: 'city', area: 'area',
+  address: 'address', rating: 'rating', stars: 'rating',
+  ownername: 'owner_name', owner: 'owner_name', contactname: 'owner_name', customername: 'owner_name',
+  productsservices: 'products', productsandservices: 'products', productorservice: 'products', productsorservices: 'products', products: 'products', services: 'products',
+};
 
 /** Put the shop's details into a template body. `shop` can be a business object or just a name. */
 export function fillTemplate(body, shop) {
-  const details = shopDetails(shop);
-  return String(body || '').replace(/\{\s*([a-z_]+)\s*\}/gi, (whole, tag) => {
-    const key = tag.toLowerCase();
-    if (!(key in FALLBACKS)) return whole;           // not one of ours: leave the text exactly as written
+  const details = { ...shopDetails(shop), products: '' };
+  return String(body || '').replace(/\{\s*([^{}\n]{1,40}?)\s*\}/g, (whole, tag) => {
+    const key = TAG_ALIASES[tag.toLowerCase().replace(/[^a-z]/g, '')];
+    if (!key) return whole;                          // not one of ours: leave the text exactly as written
     return details[key] || FALLBACKS[key];
   });
 }
@@ -97,4 +108,19 @@ export function personalizePasted(text, replacement) {
   if (!found || /^(there|team|sir|madam|all|friend|everyone|owner|shop|your shop)$/i.test(found)) return text;
   if (found.toLowerCase() === String(replacement || '').toLowerCase()) return text;
   return String(text).split(found).join(replacement);
+}
+
+// First messages sent through the approved "flexible" template: WhatsApp allows 1024 characters in all, minus the wording the
+// template uses itself and the shop's name. The text goes on one line (line breaks become " | "), which is longer than it looks.
+export const FLEX_BODY_LIMIT = 1024;
+
+export function flattenForTemplate(text) {
+  return String(text || '').split('\n').map((l) => l.trim()).filter(Boolean).join(' | ').trim();
+}
+
+/** { used, room, over } for a message about to go out as a first message to a shop. */
+export function firstMessageRoom(text, fixedChars, shopName) {
+  const used = flattenForTemplate(text).length;
+  const room = FLEX_BODY_LIMIT - (fixedChars ?? 70) - String(shopName || '').length - 5;
+  return { used, room, over: used - room };
 }

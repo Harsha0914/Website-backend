@@ -717,6 +717,7 @@ def send_mode(
         "template_ready": bool(template and ready),
         "with_picture": with_picture and bool(template),
         "flexible_template": flexible,
+        "flexible_fixed_chars": Lad.flex_fixed_chars(flexible) if flexible else None,   # wording the template itself uses, so the app can count the room left
     }
 
 

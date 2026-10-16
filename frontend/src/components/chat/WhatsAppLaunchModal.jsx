@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { X, Check, ArrowLeft, Copy, Loader2, Send, AlertCircle, MessageCircle, FileText, Link2, Building2, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatPhoneNumber, sendDirectWhatsAppPitch, getWhatsAppSendMode } from '../../services/whatsappService';
-import { WHATSAPP_TEMPLATES, getTemplate, fillTemplate, personalizePasted } from '../../services/whatsappTemplates';
+import { WHATSAPP_TEMPLATES, getTemplate, fillTemplate, personalizePasted, firstMessageRoom } from '../../services/whatsappTemplates';
 import MessageImagePicker, { FLYER_VALUE, pictureSrc } from '../whatsapp/MessageImagePicker';
 import { imageCategoryFor } from '../../utils/imageTools';
 
@@ -94,6 +94,8 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   // A first message to a shop that has not written in the last 24 hours must be WhatsApp's approved template, whose wording is
   // fixed. Show that exact wording (not the edited text, which is used once the shop replies) so nothing looks different when sent.
   const flexibleCarriesEdit = !!edited && !!sendMode?.flexible_template;     // the user's own wording can go out as a first message
+  const firstRoom = flexibleCarriesEdit ? firstMessageRoom(message, sendMode.flexible_fixed_chars, shopName) : null;   // characters left for a first message
+  const tooLongForFirst = !!firstRoom && firstRoom.over > 0;
   const usesApprovedTemplate = sendMode?.mode === 'template' && !!sendMode.template && !!template && !flexibleCarriesEdit;
   const shownText = usesApprovedTemplate ? filledTemplate : message;
 
@@ -285,6 +287,13 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
                 </div>
               </div>
 
+              {firstRoom && (
+                <p className="ui-help" style={{ color: tooLongForFirst ? 'var(--ui-danger)' : 'var(--ui-muted)', fontWeight: tooLongForFirst ? 650 : 400 }} role="status">
+                  First message: {firstRoom.used} of {firstRoom.room} characters allowed by WhatsApp.
+                  {tooLongForFirst ? ` Shorten it by ${firstRoom.over} characters, or it can only be sent after the shop replies.` : ' Fits.'}
+                </p>
+              )}
+
               {sendMode?.mode === 'template' && (
                 <div className="ui-notice ui-notice-warning" role="status">
                   <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
@@ -378,7 +387,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
         {step === 'edit' && (
           <div className="flex flex-wrap items-center justify-end gap-2 px-5 py-4 border-t" style={{ borderColor: 'var(--ui-border)' }}>
             <button type="button" onClick={onClose} disabled={sending} className="ui-btn ui-btn-secondary">Cancel</button>
-            <button type="button" onClick={handleSend} disabled={!message.trim() || sending || !phoneDigits || dailyLimit.reached} className="ui-btn ui-btn-success">
+            <button type="button" onClick={handleSend} disabled={!message.trim() || sending || !phoneDigits || dailyLimit.reached || tooLongForFirst} className="ui-btn ui-btn-success">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
               {sending ? 'Sending…' : 'Send Message'}
             </button>
