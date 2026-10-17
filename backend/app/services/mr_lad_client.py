@@ -570,6 +570,7 @@ class MrLadWhatsAppClient:
         template_key: Optional[str] = None,
         image_header_url: Optional[str] = None,
         custom_text: bool = False,
+        allow_parts: bool = False,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         Sends an outbound WhatsApp message via Mr LAD API.
@@ -781,6 +782,10 @@ class MrLadWhatsAppClient:
             if flex_template:
                 room = cls.flex_message_room(flex_template, display_name)
                 parts = cls.split_for_template(outbound_message, room)
+                if parts is not None and len(parts) > 1 and not allow_parts:
+                    # One message is what was asked for: never split on our own. The user may choose to send it in parts.
+                    flat_len = len(cls.flatten_for_template(outbound_message))
+                    return False, f"Your message is too long for ONE first message ({flat_len} characters; WhatsApp allows {room} here). Shorten it by {flat_len - room} characters, or choose to send it in {len(parts)} parts.", {"mode": "template", "template": flex_template}
                 if parts is None:
                     return False, f"Your message is too long to send as a first message, even split into {cls.FLEX_MAX_PARTS} parts. Shorten it, or wait until the shop replies.", {"mode": "template", "template": flex_template}
                 params_list = [display_name, parts[0]]

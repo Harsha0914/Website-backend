@@ -71,6 +71,7 @@ class BulkWhatsAppBroadcastSchema(BaseModel):
     image_id: Optional[int] = None   # a picture from the signed-in account's own library
     template_key: Optional[str] = None  # 'offer-link' | 'about-company': which message the user chose
     is_test: Optional[bool] = False  # a test sent to the user's OWN number: it may be repeated as often as wanted (no 30-day wait)
+    allow_parts: Optional[bool] = False  # a message too long for ONE first message may be sent as numbered parts (only when the user asked)
     custom_text: Optional[bool] = False  # the user changed the wording: send it through the flexible template when one is approved
 
 class MessageSendSchema(BaseModel):
@@ -866,6 +867,7 @@ def broadcast_all_whatsapp_shops(payload: BulkWhatsAppBroadcastSchema, db: Sessi
                     image_url=image_url or (_public_picture_url(request, "flyer") if should_send_flyer else None),
                     template_key=payload.template_key,
                     custom_text=bool(payload.custom_text),
+                    allow_parts=bool(payload.allow_parts),
                     image_header_url=image_header_url or (_public_picture_url(request, "flyer", square=True) if should_send_flyer else None),
                 )
             except Exception as w_err:
