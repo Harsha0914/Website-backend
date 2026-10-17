@@ -41,6 +41,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const [message, setMessage] = useState('');
   const [image, setImage] = useState(null); // null = text only, or { kind: 'flyer' } / { kind: 'library', id, ... }
   const [sending, setSending] = useState(false);
+  const [splitOk, setSplitOk] = useState(false);   // the user chose to send a too-long message in numbered parts
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [testPhone, setTestPhone] = useState('');
@@ -96,12 +97,14 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const flexibleCarriesEdit = !!edited && !!sendMode?.flexible_template;     // the user's own wording can go out as a first message
   const firstRoom = flexibleCarriesEdit ? firstMessageRoom(message, sendMode.flexible_fixed_chars, shopName) : null;   // characters left for a first message
   const firstParts = flexibleCarriesEdit ? firstMessageParts(message, sendMode.flexible_fixed_chars, shopName) : [];   // null = too long even in parts
-  const tooLongForFirst = !!firstRoom && firstParts === null;
+  const needsParts = !!firstParts && firstParts.length > 1;                 // does not fit in ONE first message
+  const tooLongForFirst = !!firstRoom && (firstParts === null || (needsParts && !splitOk));
   const usesApprovedTemplate = sendMode?.mode === 'template' && !!sendMode.template && !!template && !flexibleCarriesEdit;
   const shownText = usesApprovedTemplate ? filledTemplate : message;
 
   // Whatever the user last wrote for this message type is shown again, until they change it.
   const editMessage = (text) => {
+    setSplitOk(false);               // a changed text asks again
     setMessage(text);
     if (templateId) saveMessage(templateId, toReusable(text, shop));
   };
@@ -125,6 +128,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const chooseTemplate = (t) => {
     setTemplateId(t.id);
     const saved = getSavedMessage(t.id);
+    setSplitOk(false);
     setMessage(fillTemplate(saved || t.body, shop));
     // keep a picture the user already chose; otherwise start from the template's default
     setImage((current) => current ?? (t.includeFlyer ? FLYER_VALUE : null));
@@ -145,6 +149,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
         imageId: image?.kind === 'library' ? image.id : null,
         templateKey: templateId,
         customText: !!edited,
+        allowParts: splitOk,
       });
       setStep('sent');
       if (onSent) onSent();
@@ -289,13 +294,20 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
               </div>
 
               {firstRoom && (
-                <p className="ui-help" style={{ color: tooLongForFirst ? 'var(--ui-danger)' : 'var(--ui-muted)', fontWeight: tooLongForFirst ? 650 : 400 }} role="status">
-                  {tooLongForFirst
+                <div className="ui-help" style={{ color: tooLongForFirst ? 'var(--ui-danger)' : 'var(--ui-muted)', fontWeight: tooLongForFirst ? 650 : 400 }} role="status">
+                  {firstParts === null
                     ? `This message is too long to send as a first message, even in 3 parts (${firstRoom.used} characters). Shorten it, or it can only be sent after the shop replies.`
-                    : firstParts && firstParts.length > 1
-                      ? `This is longer than one first message allows (${firstRoom.used} of ${firstRoom.room} characters), so it will be sent as ${firstParts.length} numbered messages, one after another.`
-                      : `First message: ${firstRoom.used} of ${firstRoom.room} characters allowed by WhatsApp. Fits.`}
-                </p>
+                    : needsParts
+                      ? (splitOk
+                        ? `It will be sent as ${firstParts.length} numbered messages, one after another.`
+                        : `Too long for ONE first message: ${firstRoom.used} of ${firstRoom.room} characters. Shorten it by ${firstRoom.over} characters to send it as one message.`)
+                      : `First message: ${firstRoom.used} of ${firstRoom.room} characters allowed by WhatsApp. Fits in one message.`}
+                  {needsParts && (
+                    <button type="button" onClick={() => setSplitOk((v) => !v)} className="ui-btn ui-btn-secondary ui-btn-sm" style={{ marginLeft: 10 }}>
+                      {splitOk ? 'Send as one message instead' : `Send in ${firstParts.length} parts anyway`}
+                    </button>
+                  )}
+                </div>
               )}
 
               {sendMode?.mode === 'template' && (
