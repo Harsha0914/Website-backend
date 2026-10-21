@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   MessageCircle,
   Bot,
@@ -118,8 +119,12 @@ export default function WhatsAppHubPage() {
   const chatCardRef = useRef(null);
   const [pictureThumbs, setPictureThumbs] = useState({}); // picture id -> small preview, so sent pictures can be shown
   const conversationsRef = useRef([]);
-  const [selectedDate, setSelectedDate] = useState(null); // an Indian calendar day (YYYY-MM-DD) or null; with selectedSpan > 1 it is the LAST day of a range
-  const [selectedSpan, setSelectedSpan] = useState(1);       // 1 = one day, 7 / 30 = "last 7 / 30 days"
+  // A link such as /whatsapp?day=2026-10-13&span=1 opens straight on that day's chats.
+  const [urlParams] = useSearchParams();
+  const urlDay = /^\d{4}-\d{2}-\d{2}$/.test(urlParams.get('day') || '') ? urlParams.get('day') : null;
+  const urlSpan = Math.min(90, Math.max(1, parseInt(urlParams.get('span') || '1', 10) || 1));
+  const [selectedDate, setSelectedDate] = useState(urlDay); // an Indian calendar day (YYYY-MM-DD) or null; with selectedSpan > 1 it is the LAST day of a range
+  const [selectedSpan, setSelectedSpan] = useState(urlDay ? urlSpan : 1);       // 1 = one day, 7 / 30 = "last 7 / 30 days"
   const [dayInfo, setDayInfo] = useState(null);
   const [dayLoading, setDayLoading] = useState(false);
 

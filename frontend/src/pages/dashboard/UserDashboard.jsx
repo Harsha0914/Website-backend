@@ -78,6 +78,10 @@ function SectionHead({ icon: Icon, title }) {
 }
 
 const PRESET_DISTANCES = [0.5, 1, 2, 5, 10, 20, 30, 50];
+// The stops the slider moves through: fine steps for short distances, wider steps further out, always ending at 50 km.
+const RADIUS_STOPS = [0.5, 1, 1.5, 2, 3, 4, 5, 7.5, 10, 15, 20, 25, 30, 40, 50];
+const formatKm = (d) => (d < 1 ? `${Math.round(d * 1000)} m` : `${d} km`);
+const nearestStop = (km) => RADIUS_STOPS.reduce((best, v, i) => (Math.abs(v - km) < Math.abs(RADIUS_STOPS[best] - km) ? i : best), 0);
 
 // Browse lists: plain names that say what you will see.
 const QUICK_LINKS = [
@@ -278,37 +282,36 @@ export default function UserDashboard() {
 
               <section className="ui-form-section">
                 <SectionHead icon={Ruler} title="Search" />
-                <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Search distance">
-                  <div className="ui-seg">
-                    {PRESET_DISTANCES.map((d) => (
-                      <button
-                        key={d}
-                        type="button"
-                        aria-pressed={Number(radiusKm) === d}
-                        onClick={() => { setRadius(d); setCustomRadiusInput(''); }}
-                      >
-                        {d < 1 ? `${d * 1000} m` : `${d} km`}
-                      </button>
-                    ))}
+                <div className="rad" role="group" aria-label="Search distance">
+                  <div className="rad-control">
+                    <div className="rad-stage" style={{ '--rad-p': nearestStop(Number(radiusKm)) / (RADIUS_STOPS.length - 1) }}>
+                      <input
+                        type="range"
+                        className="rad-slider"
+                        min="0"
+                        max={RADIUS_STOPS.length - 1}
+                        step="1"
+                        value={nearestStop(Number(radiusKm))}
+                        onChange={(e) => { setRadius(RADIUS_STOPS[Number(e.target.value)]); setCustomRadiusInput(''); }}
+                        aria-label="Search distance"
+                        aria-valuetext={formatKm(Number(radiusKm))}
+                      />
+                    </div>
+                    <div className="rad-ticks">
+                      {PRESET_DISTANCES.map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          className={Number(radiusKm) === d ? 'is-on' : ''}
+                          style={{ '--rad-p': RADIUS_STOPS.indexOf(d) / (RADIUS_STOPS.length - 1) }}
+                          onClick={() => { setRadius(d); setCustomRadiusInput(''); }}
+                          aria-pressed={Number(radiusKm) === d}
+                        >
+                          {formatKm(d)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <label className="flex items-center gap-2">
-                    <span className="ui-help">Other</span>
-                    <input
-                      type="number"
-                      min="0.1"
-                      max="50"
-                      step="0.5"
-                      inputMode="decimal"
-                      value={customRadiusInput}
-                      onChange={(e) => setCustomRadiusInput(e.target.value)}
-                      onBlur={applyCustomRadius}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCustomRadius(); } }}
-                      placeholder="km"
-                      className="ui-input"
-                      style={{ width: 90, minHeight: 38 }}
-                      aria-label="Custom distance in kilometres"
-                    />
-                  </label>
                 </div>
               </section>
 
