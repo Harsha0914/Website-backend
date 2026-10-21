@@ -55,6 +55,12 @@ export function todayIST() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: IST, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
+/** Yesterday's Indian calendar day as YYYY-MM-DD. */
+export function yesterdayIST() {
+  const [y, m, d] = todayIST().split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
 /** A plain YYYY-MM-DD day (already an Indian calendar day) as readable text, e.g. "9 Oct 2026". */
 export function formatYmdIST(ymd, options = { day: 'numeric', month: 'short', year: 'numeric' }) {
   if (!ymd) return '';

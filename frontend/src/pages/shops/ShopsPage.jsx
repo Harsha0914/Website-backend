@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Store,
   Globe,
@@ -38,6 +38,8 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { GooglePlacesAutocomplete } from '../../components/location/GooglePlacesAutocomplete';
 import GoogleMapsConnectModal from '../../components/common/GoogleMapsConnectModal';
 import BulkWhatsAppBroadcastModal from '../../components/shops/BulkWhatsAppBroadcastModal';
+import { useContactedShops, contactedAt } from '../../services/contactedShops';
+import { formatPhoneNumber } from '../../services/whatsappService';
 import { useDailyLimit } from '../../services/dailyLimit';
 import SelectMenu from '../../components/common/SelectMenu';
 import { launchWhatsAppApp } from '../../services/whatsappService';
@@ -109,14 +111,9 @@ export default function ShopsPage({ defaultTab = 'all' }) {
   const dailyLimit = useDailyLimit();
   const [showModifyModal, setShowModifyModal] = useState(false);
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [picked, setPicked] = useState(() => new Set());   // ids of the shops ticked on this page
+  const contactedState = useContactedShops();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-
-  useEffect(() => {
-    if (searchParams.get('send_whatsapp') === '1' || searchParams.get('broadcast') === '1') {
-      setShowBroadcastModal(true);
-    }
-  }, [searchParams]);
 
   const {
     businesses, searchCenter, radiusKm, category, keyword,
@@ -280,8 +277,30 @@ export default function ShopsPage({ defaultTab = 'all' }) {
     });
   }, [baseFilteredBusinesses, selectedRating, sortBy, phoneFilter]);
 
-  // Shops that can be messaged (they have a phone number); the dialog lets the user pick any number of them.
-  const sendableShops = React.useMemo(() => filteredBusinesses.filter(hasPhone), [filteredBusinesses]);
+  // A shop can be ticked when it has a phone number and was not messaged in the last 30 days (the server would skip it).
+  const isPickable = React.useCallback(
+    (b) => hasPhone(b) && !contactedAt(contactedState, formatPhoneNumber(b.phone || b.phone_number)),
+    [contactedState],
+  );
+  const pickableShown = React.useMemo(() => filteredBusinesses.filter(isPickable), [filteredBusinesses, isPickable]);
+  const pickedShops = React.useMemo(() => businesses.filter((b) => picked.has(b.id) && isPickable(b)), [businesses, picked, isPickable]);
+  const togglePick = (b) => setPicked((prev) => {
+    const next = new Set(prev);
+    if (next.has(b.id)) next.delete(b.id); else next.add(b.id);
+    return next;
+  });
+  const allShownPicked = pickableShown.length > 0 && pickableShown.every((b) => picked.has(b.id));
+  const pickAllShown = () => setPicked((prev) => {
+    const next = new Set(prev);
+    pickableShown.forEach((b) => next.add(b.id));
+    return next;
+  });
+  const unpickShown = () => setPicked((prev) => {
+    const next = new Set(prev);
+    pickableShown.forEach((b) => next.delete(b.id));
+    return next;
+  });
+  const clearPicked = () => setPicked(new Set());
 
   const phoneCounts = React.useMemo(() => {
     const withPhone = baseFilteredBusinesses.filter(hasPhone).length;
@@ -341,7 +360,6 @@ export default function ShopsPage({ defaultTab = 'all' }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--ui-bg)' }}>
       <Navbar
-        quickAction={sendableShops.length > 0 ? { label: 'Quick Select', onClick: () => setShowBroadcastModal(true) } : null}
       />
 
       <main className="flex-1">
@@ -556,7 +574,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                   className={
                     viewMode === 'split'
                       ? 'lg:col-span-6 xl:col-span-5 space-y-4 lg:max-h-[780px] lg:overflow-y-auto lg:pr-2'
-                      : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'
+                      : 'space-y-3'
                   }
                 >
                   {selectedRating !== 'all' && (
@@ -570,14 +588,52 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                       </button>
                     </div>
                   )}
-                  {filteredBusinesses.map((b) => (
-                    <BusinessCard
-                      key={b.id}
-                      business={b}
-                      isSelected={selectedBusinessId === b.id}
-                      onSelect={() => setSelectedBusinessId(b.id)}
-                    />
-                  ))}
+                  {pickableShown.length > 0 && (
+                    <div className="pick-row">
+                      <button type="button" className="pick-all-btn" onClick={allShownPicked ? unpickShown : pickAllShown}>
+                        {allShownPicked ? 'Clear the shops shown' : `Select all ${pickableShown.length} shops shown`}
+                      </button>
+                      <span className="pick-hint">Click a shop to select it for a WhatsApp message. Shops without a phone number or already contacted cannot be selected.</span>
+                    </div>
+                  )}
+                  {viewMode === 'list' ? (
+                    <div className="shop-list" role="list">
+                      <div className="shop-list-head" aria-hidden="true">
+                        <span />
+                        <span>Shop</span>
+                        <span>Website</span>
+                        <span>Address</span>
+                        <span>Phone</span>
+                        <span>Rating</span>
+                        <span>Distance</span>
+                        <span className="text-right">Actions</span>
+                      </div>
+                      {filteredBusinesses.map((b) => (
+                        <BusinessCard
+                          key={b.id}
+                          layout="row"
+                          business={b}
+                          isSelected={selectedBusinessId === b.id}
+                          onSelect={() => setSelectedBusinessId(b.id)}
+                          selectable
+                          checked={picked.has(b.id)}
+                          onToggleCheck={togglePick}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    filteredBusinesses.map((b) => (
+                      <BusinessCard
+                        key={b.id}
+                        business={b}
+                        isSelected={selectedBusinessId === b.id}
+                        onSelect={() => setSelectedBusinessId(b.id)}
+                        selectable
+                        checked={picked.has(b.id)}
+                        onToggleCheck={togglePick}
+                      />
+                    ))
+                  )}
                 </div>
               )}
 
@@ -593,7 +649,6 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                       totalWithoutWebsites={withoutWebsites}
                       totalWithWebsites={withWebsites}
                       locationName={locationName}
-                      onSelectVisible={() => setShowBroadcastModal(true)}
                     />
                   </div>
                 </div>
@@ -736,12 +791,28 @@ export default function ShopsPage({ defaultTab = 'all' }) {
         onConnected={() => { searchNearby().catch(() => {}); }}
       />
 
+      {pickedShops.length > 0 && !showBroadcastModal && (
+        <div className="pick-bar" role="region" aria-label="Selected shops">
+          <div className="pick-bar-info">
+            <strong>{pickedShops.length} shop{pickedShops.length === 1 ? '' : 's'} selected</strong>
+            {dailyLimit.available && Number.isFinite(dailyLimit.remaining) && pickedShops.length > dailyLimit.remaining && (
+              <span className="pick-bar-warn">Only {dailyLimit.remaining} more contact{dailyLimit.remaining === 1 ? '' : 's'} can be messaged today; the rest will wait.</span>
+            )}
+          </div>
+          <button type="button" className="pick-bar-clear" onClick={clearPicked}>Clear</button>
+          <button type="button" className="ui-btn ui-btn-success pick-bar-send" onClick={() => setShowBroadcastModal(true)} disabled={dailyLimit.reached}>
+            <Send className="h-4 w-4" aria-hidden="true" />
+            Send WhatsApp Message ({pickedShops.length})
+          </button>
+        </div>
+      )}
+
       <BulkWhatsAppBroadcastModal
         isOpen={showBroadcastModal}
         onClose={() => setShowBroadcastModal(false)}
-        shops={sendableShops}
-        onlyNoWebsiteDefault={activeTab === 'no-websites'}
-        onBroadcastComplete={() => {}}
+        shops={pickedShops}
+        preselectAll
+        onBroadcastComplete={() => clearPicked()}
       />
 
       <MobileBottomNav />

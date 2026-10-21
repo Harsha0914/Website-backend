@@ -43,7 +43,7 @@ function StatusMark({ status }) {
  *   1. Choose the shops (any number).   2. Pick a template and check the text.   3. Watch it send.
  * Each shop is sent to only after the previous one has finished, and every shop shows its own status.
  */
-export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = [], onBroadcastComplete, onlyNoWebsiteDefault = false }) {
+export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = [], onBroadcastComplete, onlyNoWebsiteDefault = false, preselectAll = false }) {
   const [step, setStep] = useState('select'); // 'select' | 'message' | 'send'
   const contactedState = useContactedShops(); // shops already messaged inside the repeat window (30 days)
   const dailyLimit = useDailyLimit();          // how many messages can still go out today
@@ -110,6 +110,13 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, running, onClose]);
+
+  // Opened from the Results page with the shops already ticked: start at the template step with all of them chosen.
+  useEffect(() => {
+    if (!isOpen || !preselectAll) return;
+    setSelected(new Set(contacts.map((c) => c.key)));
+    setStep('message');
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentIndex = queue.findIndex((q) => q.status === 'sending');
   useEffect(() => {
@@ -261,7 +268,8 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
   const current = queue.find((q) => q.status === 'sending');
   const finished = step === 'send' && !running && counts.pending === 0 && counts.sending === 0;
   const canClose = !running;
-  const stepIndex = { select: 1, message: 2, send: 3 }[step];
+  const stepLabels = preselectAll ? ['Message', 'Send'] : ['Choose shops', 'Message', 'Send'];
+  const stepIndex = (preselectAll ? { message: 1, send: 2 } : { select: 1, message: 2, send: 3 })[step];
 
   return createPortal(
     <div
@@ -279,15 +287,15 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
         {/* Header */}
         <div className="qs-head">
           <div className="flex items-start gap-3">
-            {step === 'message' && (
+            {step === 'message' && !preselectAll && (
               <button type="button" onClick={() => setStep('select')} className="qs-head-btn" aria-label="Back to shops">
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" />
               </button>
             )}
             <div className="flex-1 min-w-0">
               <h2 id="bulk-wa-title" className="qs-title">
-                {step === 'select' && 'Quick Select'}
-                {step === 'message' && 'Choose and check the message'}
+                {step === 'select' && 'Choose shops'}
+                {step === 'message' && 'Choose the message to send'}
                 {step === 'send' && (finished ? 'Finished' : 'Sending messages')}
               </h2>
               <p className="qs-sub">
@@ -301,7 +309,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
             </button>
           </div>
           <ol className="qs-steps" aria-label="Progress">
-            {['Choose shops', 'Message', 'Send'].map((label, idx) => {
+            {stepLabels.map((label, idx) => {
               const n = idx + 1;
               const state = n < stepIndex ? 'done' : n === stepIndex ? 'current' : 'todo';
               return (
@@ -395,6 +403,17 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
         {step === 'message' && (
           <>
             <div className="px-5 py-4 space-y-4 overflow-y-auto">
+              {preselectAll && (
+                <div className="qs-to" role="note">
+                  <Users className="h-4 w-4" aria-hidden="true" />
+                  <span>
+                    <strong>{selectedCount} shop{selectedCount === 1 ? '' : 's'}</strong>
+                    {': '}
+                    {contacts.slice(0, 3).map((c) => c.name).join(', ')}
+                    {contacts.length > 3 ? ` and ${contacts.length - 3} more` : ''}
+                  </span>
+                </div>
+              )}
               <div>
                 <p className="ui-label">Template</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Message template">
