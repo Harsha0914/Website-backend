@@ -6,6 +6,7 @@
  *  - GPS detection
  */
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import api from '../services/api';
 import { calculateDistance } from '../services/distanceService';
 import { getCurrentGpsPosition, getIpFallbackPosition, reverseGeocodeCoords } from '../services/locationService';
@@ -45,17 +46,12 @@ function makePlaceCenter(details) {
   };
 }
 
-export const useShopStore = create((set, get) => ({
+export const useShopStore = create(persist((set, get) => ({
   // ─── Search Center ─────────────────────────────────────────────────────────
   searchCenter: makeGpsCenter(DEFAULT_LAT, DEFAULT_LNG, null, true),
 
-  // Legacy-compatible lat/lng shortcuts (derived from searchCenter)
-  get latitude() {
-    return get().searchCenter.latitude;
-  },
-  get longitude() {
-    return get().searchCenter.longitude;
-  },
+  // (The old "latitude" / "longitude" shortcut getters were removed: reading them while a saved search was being loaded
+  //  failed silently, so the saved place was never applied. Use searchCenter.latitude / searchCenter.longitude.)
 
   // ─── Search Filters ────────────────────────────────────────────────────────
   radiusKm: 2.0,
@@ -422,5 +418,27 @@ export const useShopStore = create((set, get) => ({
       set({ loading: false, error: msg });
       throw new Error(msg);
     }
+  },
+}), {
+  // The place, distance, shop type and keyword the user chose are remembered in this browser, so a refresh keeps them.
+  name: 'shop-search-v1',
+  version: 1,
+  partialize: (state) => ({
+    searchCenter: state.searchCenter,
+    radiusKm: state.radiusKm,
+    category: state.category,
+    keyword: state.keyword,
+  }),
+  merge: (saved, current) => {
+    const c = saved?.searchCenter;
+    const goodCenter = c && Number.isFinite(parseFloat(c.latitude)) && Number.isFinite(parseFloat(c.longitude));
+    const r = parseFloat(saved?.radiusKm);
+    return {
+      ...current,
+      searchCenter: goodCenter ? { ...current.searchCenter, ...c, latitude: parseFloat(c.latitude), longitude: parseFloat(c.longitude) } : current.searchCenter,
+      radiusKm: Number.isFinite(r) && r >= 0.1 && r <= 50 ? r : current.radiusKm,
+      category: typeof saved?.category === 'string' ? saved.category : current.category,
+      keyword: typeof saved?.keyword === 'string' ? saved.keyword : current.keyword,
+    };
   },
 }));

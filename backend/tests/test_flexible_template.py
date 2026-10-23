@@ -7,13 +7,25 @@ def _known(monkeypatch, **templates):
     monkeypatch.setattr(Lad, "list_templates", classmethod(lambda cls, max_age=300.0: templates))
 
 
+def test_the_flexible_template_is_off_by_default_even_when_configured(monkeypatch):
+    # Meta holds the flexible template back (131049) while the fixed Offer Link V4 is delivered, so it is not used unless switched on
+    monkeypatch.setattr(settings, "WHATSAPP_FLEX_ENABLED", False)
+    monkeypatch.setattr(settings, "WHATSAPP_FLEX_TEMPLATE_TEXT", "lexon_custom_text")
+    monkeypatch.setattr(settings, "WHATSAPP_FLEX_TEMPLATE_PICTURE", "lexon_custom_message_pic_v2")
+    _known(monkeypatch, lexon_custom_text={"status": "APPROVED", "header_type": ""},
+           lexon_custom_message_pic_v2={"status": "APPROVED", "header_type": "IMAGE"})
+    assert Lad.pick_flexible(False) is None and Lad.pick_flexible(True) is None
+
+
 def test_no_flexible_template_configured_means_none(monkeypatch):
+    monkeypatch.setattr(settings, "WHATSAPP_FLEX_ENABLED", True)
     monkeypatch.setattr(settings, "WHATSAPP_FLEX_TEMPLATE_TEXT", "")
     monkeypatch.setattr(settings, "WHATSAPP_FLEX_TEMPLATE_PICTURE", "")
     assert Lad.pick_flexible(False) is None and Lad.pick_flexible(True) is None
 
 
 def test_only_an_approved_template_with_the_right_header_is_used(monkeypatch):
+    monkeypatch.setattr(settings, "WHATSAPP_FLEX_ENABLED", True)
     monkeypatch.setattr(settings, "WHATSAPP_FLEX_TEMPLATE_TEXT", "lexon_custom_text")
     monkeypatch.setattr(settings, "WHATSAPP_FLEX_TEMPLATE_PICTURE", "lexon_custom_picture")
     _known(monkeypatch,

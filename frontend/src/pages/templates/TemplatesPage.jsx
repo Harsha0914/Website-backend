@@ -77,7 +77,7 @@ function TemplateEditor({ template, onClose, onSaved }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="tpl-title"
-        className="ui-card w-full flex flex-col outline-none sm:max-w-2xl"
+        className="ui-card tpl-modal w-full flex flex-col outline-none sm:max-w-2xl"
         style={{ maxHeight: '92vh', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, boxShadow: 'var(--ui-shadow-lg)' }}
       >
         <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: 'var(--ui-border)' }}>
@@ -166,7 +166,7 @@ export default function TemplatesPage() {
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--ui-bg)' }}>
       <Navbar />
 
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col tpl-page">
         <section className="finder-hero results-hero wa-hero">
           <div className="finder-hero-inner results-hero-row">
             <div className="min-w-0">
