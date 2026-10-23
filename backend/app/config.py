@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     # "Flexible" templates carry the user's OWN edited text as a first message to a shop that has not written in 24 hours.
     # Each is an approved template whose body has two fill-in fields: {{1}} = the shop's name and {{2}} = the message text.
     # Leave empty to keep using only the fixed approved templates.
+    WHATSAPP_FLEX_ENABLED: bool = False         # OFF: first messages always go through the fixed approved template (e.g. Lexon Offer Link V4); Meta holds the flexible one back (131049)
     WHATSAPP_FLEX_TEMPLATE_TEXT: str = ""        # name of the flexible template WITHOUT a picture header
     WHATSAPP_FLEX_TEMPLATE_PICTURE: str = ""     # name of the flexible template WITH an image header
 

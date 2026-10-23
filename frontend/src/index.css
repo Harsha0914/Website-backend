@@ -880,6 +880,19 @@ body {
   .brand-anim .brand-letter { animation: none; opacity: 1; transform: none; }
 }
 
+/* ── Message templates: same look as Find shops and Results (shop-front photo header, dark outlines, hard shadows) ───────────────── */
+.tpl-page .results-hero {
+  background:
+    linear-gradient(180deg, rgba(26, 14, 8, .84) 0%, rgba(44, 24, 16, .70) 55%, rgba(26, 14, 8, .90) 100%),
+    url('/hero_shop_building.jpg') center 56% / cover no-repeat, #2c1810;
+}
+.tpl-page .results-hero::before, .tpl-page .results-hero::after { display: none; }
+.tpl-page .results-hero h1 { text-shadow: 0 2px 20px rgba(26, 14, 8, .6); }
+.tpl-page .results-hero p { color: rgba(255, 245, 230, .92); text-shadow: 0 1px 12px rgba(26, 14, 8, .8); }
+.tpl-page ul > li > .ui-card, .tpl-page ul > li > button.ui-card { border: 1.5px solid #2c1810; border-radius: 16px; box-shadow: 4px 4px 0 #2c1810; background: #fff; transition: transform .12s, box-shadow .12s; }
+.tpl-page ul > li > button.ui-card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 #ff6b35; border-color: #2c1810; }
+.tpl-modal { border: 1.5px solid #2c1810 !important; border-radius: 16px; box-shadow: 6px 6px 0 #2c1810; }
+
 .results-source-link { cursor: pointer; font: inherit; transition: background .15s, transform .15s; }
 .results-source-link:hover { background: rgba(255, 255, 255, .26); transform: translateY(-1px); }
 .wa-period-link { cursor: pointer; }

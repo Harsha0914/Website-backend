@@ -212,7 +212,9 @@ class MrLadWhatsAppClient:
 
     @classmethod
     def pick_flexible(cls, with_picture: bool = False) -> Optional[str]:
-        """The approved flexible template for this kind of message, or None when none is configured / approved."""
+        """The approved flexible template for this kind of message, or None when none is configured / approved / switched on."""
+        if not settings.WHATSAPP_FLEX_ENABLED:
+            return None      # switched off: the fixed approved template (Lexon Offer Link V4) is always used
         name = (settings.WHATSAPP_FLEX_TEMPLATE_PICTURE if with_picture else settings.WHATSAPP_FLEX_TEMPLATE_TEXT) or ""
         name = name.strip()
         if not name:
