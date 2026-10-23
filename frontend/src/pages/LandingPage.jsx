@@ -11,7 +11,7 @@ const STEPS = [
 
 // span = how many of the 6 grid columns the card takes on a wide screen (a mixed-size grid)
 const FEATURES = [
-  { icon: MapPin, tone: '#6366f1', span: 4, title: 'Live Google Maps shops', text: 'Shop names, addresses, phone numbers and ratings come straight from Google Maps, so you always work with real, current shops.' },
+  { icon: MapPin, tone: '#ff7a45', span: 4, title: 'Live Google Maps shops', text: 'Shop names, addresses, phone numbers and ratings come straight from Google Maps, so you always work with real, current shops.' },
   { icon: Globe, tone: '#10b981', span: 2, title: 'Website check', text: 'See at a glance if a shop has a website and how good it is.' },
   { icon: Users, tone: '#f59e0b', span: 2, title: 'Send to many, one by one', text: 'Pick 10, 20 or more shops and watch each message go out with its own status.' },
   { icon: MessageCircle, tone: '#0ea5e9', span: 4, title: 'All chats in one place', text: 'Every message you send and every reply you get, in a single clean inbox, kept safe and private to your account.' },
