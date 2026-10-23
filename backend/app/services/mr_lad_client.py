@@ -910,6 +910,21 @@ class MrLadWhatsAppClient:
     # Per-thread change signature so unchanged threads cost zero extra API calls.
     _thread_signatures: Dict[str, str] = {}
     _sync_lock = threading.Lock()
+    _media_logged: set = set()   # message ids whose raw data was already written to the log (diagnostics, once each)
+
+    _MEDIA_LABEL = re.compile(r"^[\W_]*(video|image|photo|audio|voice|document|sticker|gif)[\W_]*$", re.I)
+    _RAW_KEYS = ("id", "role", "direction", "type", "message_type", "msg_type", "content", "text", "status", "created_at",
+                 "timestamp", "sent_at", "from_customer", "sender_name", "template_name", "media_type", "media_url", "header_type")
+
+    @classmethod
+    def _log_media_label(cls, m: Dict[str, Any], is_in: bool, thread_id: str) -> None:
+        """A message whose whole text is just "Video" / "Image": write its raw (trimmed) data once, to find where it comes from."""
+        key = str(m.get("id") or m.get("_id") or m.get("wamid") or "")
+        if not key or key in cls._media_logged or len(cls._media_logged) > 2000:
+            return
+        cls._media_logged.add(key)
+        raw = {k: m.get(k) for k in cls._RAW_KEYS if m.get(k) not in (None, "")}
+        logger.warning("[Mr LAD Sync] media-label message (counted as %s) in thread %s: %s", "INBOUND" if is_in else "outbound", thread_id, str(raw)[:700])
 
     @staticmethod
     def _parse_ts(m: Dict[str, Any]) -> Optional[datetime]:
@@ -995,6 +1010,9 @@ class MrLadWhatsAppClient:
                     direction = (m.get("direction") or "").lower()
                     is_in = (role == "user") or direction in ("inbound", "incoming", "in") or m.get("from_customer") is True
                     ts = cls._parse_ts(m)
+                    _label = (m.get("content") or m.get("text") or m.get("body") or "").strip()
+                    if _label and cls._MEDIA_LABEL.match(_label):
+                        cls._log_media_label(m, is_in, thread_id)
                     if is_in:
                         text = (m.get("content") or m.get("text") or m.get("body") or "").strip()
                         msg_id = m.get("id") or m.get("wamid") or m.get("_id") or m.get("external_message_id")

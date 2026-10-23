@@ -91,3 +91,15 @@ def test_admin_copy_creates_the_missing_admin_thread_then_delivers(monkeypatch):
     MrLadWhatsAppClient.sync_to_admin("Hello pitch", "Some Shop", "+919876543210", send_flyer=False)
     assert any(u.endswith("/api/leads/import") for u in calls)
     assert any(u.endswith("/api/conversations/admin-thread-1/messages") for u in calls)
+
+
+def test_a_media_label_message_is_written_to_the_log_once_with_its_raw_data(caplog):
+    from app.services.mr_lad_client import MrLadWhatsAppClient as Lad
+    Lad._media_logged.clear()
+    msg = {"id": "m-1", "role": "user", "content": "Video", "type": "video", "created_at": "2026-10-23T04:37:00Z"}
+    assert Lad._MEDIA_LABEL.match("Video") and Lad._MEDIA_LABEL.match("🎥 Video") and not Lad._MEDIA_LABEL.match("Video demo please")
+    with caplog.at_level("WARNING"):
+        Lad._log_media_label(msg, True, "thread-9")
+        Lad._log_media_label(msg, True, "thread-9")          # the same message is not logged twice
+    lines = [r.getMessage() for r in caplog.records if "media-label message" in r.getMessage()]
+    assert len(lines) == 1 and "INBOUND" in lines[0] and "'type': 'video'" in lines[0]
