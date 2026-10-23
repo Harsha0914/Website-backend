@@ -42,11 +42,11 @@ import api from '../../services/api';
 import { resolveKeywordToCategories } from '../../utils/searchMatcher';
 
 const CATEGORIES = [
-  { value: '', label: 'All Categories', icon: Store, color: '#6366f1' },
+  { value: '', label: 'All Categories', icon: Store, color: '#ff7a45' },
   { value: 'Grocery Store', label: 'Grocery Store', icon: ShoppingBag, color: '#10b981' },
   { value: 'Supermarket', label: 'Supermarket', icon: ShoppingBag, color: '#059669' },
   { value: 'General Store', label: 'General Store', icon: Store, color: '#8b5cf6' },
-  { value: 'Department Store', label: 'Department Store', icon: Building2, color: '#6366f1' },
+  { value: 'Department Store', label: 'Department Store', icon: Building2, color: '#ff7a45' },
   { value: 'Meat & Poultry', label: 'Meat & Poultry', icon: Store, color: '#e11d48' },
   { value: 'Pharmacy', label: 'Pharmacy', icon: Pill, color: '#ef4444' },
   { value: 'Bakery', label: 'Bakery', icon: Coffee, color: '#f59e0b' },
@@ -232,54 +232,62 @@ export default function UserDashboard() {
       <Navbar />
 
       <main className="flex-1 finder-tight">
-        <section className="finder-hero">
-          <div className="finder-hero-inner">
-            <h1>Find shops near you</h1>
-            <p>
-              Pick a place, a distance and a shop type. We show which nearby shops already have a
-              website and which do not, so you know exactly who to reach out to.
-            </p>
-          </div>
-        </section>
+        <form onSubmit={handleSearchSubmit} aria-label="Find shops" className="fx-form">
+          <section className="finder-hero">
+            <div className="finder-hero-inner">
+              <h1>Find shops near you</h1>
+              <p>
+                Search a place, then choose a distance and a shop type. We show which nearby shops already have a
+                website and which do not, so you know exactly who to reach out to.
+              </p>
 
-        <div className="ui-page finder-body">
-
-          <form
-            onSubmit={handleSearchSubmit}
-            aria-label="Find shops"
-            className="ui-card finder-card"
-          >
-            <div className="finder-card-body">
-              <section className="ui-form-section">
-                <SectionHead icon={MapPin} title="Location" />
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="flex-1 min-w-0">
-                    <GooglePlacesAutocomplete
-                      forceValue={forceInputValue}
-                      placeholder="Search a town, area or landmark"
-                      onPlaceSelect={handlePlaceSelect}
-                      onTyping={handleTyping}
-                      onClear={handleClearLocation}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDetectLocation(false)}
-                    disabled={isDetectingLocation}
-                    className="ui-btn ui-btn-secondary"
-                  >
-                    <Crosshair className="h-4 w-4" aria-hidden="true" />
-                    {isDetectingLocation ? 'Finding…' : 'Use my location'}
-                  </button>
+              <div className="fx-bar">
+                <div className="fx-place">
+                  <GooglePlacesAutocomplete
+                    forceValue={forceInputValue}
+                    placeholder="Where? Search a town, area or landmark"
+                    onPlaceSelect={handlePlaceSelect}
+                    onTyping={handleTyping}
+                    onClear={handleClearLocation}
+                  />
                 </div>
-                {locationStatus && (
-                  <div className="ui-notice ui-notice-info mt-3" role="status">
-                    <Navigation className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
-                    <span>{locationStatus}</span>
-                  </div>
-                )}
-              </section>
+                <button
+                  type="button"
+                  onClick={() => handleDetectLocation(false)}
+                  disabled={isDetectingLocation}
+                  className="fx-loc"
+                  title="Use my current location"
+                >
+                  <Crosshair className="h-4 w-4" aria-hidden="true" />
+                  <span>{isDetectingLocation ? 'Finding…' : 'Use my location'}</span>
+                </button>
+                <button type="submit" disabled={loading || !hasLocation} className="fx-go">
+                  <Search className="h-5 w-5" aria-hidden="true" />
+                  {loading ? 'Searching…' : 'Show shops'}
+                  {!loading && <ArrowRight className="h-5 w-5" aria-hidden="true" />}
+                </button>
+              </div>
 
+              {locationStatus && (
+                <p className="fx-note" role="status"><Navigation className="h-4 w-4" aria-hidden="true" />{locationStatus}</p>
+              )}
+              {error && (
+                <p className="fx-note fx-note-error" role="alert">
+                  <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                  {typeof error === 'string' ? error : 'Something went wrong. Please try again.'}
+                </p>
+              )}
+              <p className="fx-sum" aria-live="polite">
+                {hasLocation
+                  ? <>Looking for <strong>{currentCategoryLabel}</strong> within <strong>{kmLabel}</strong> of <strong>{searchCenter.name || 'your current location'}</strong>{keyword?.trim() ? <>, matching <strong>&ldquo;{keyword.trim()}&rdquo;</strong></> : null}</>
+                  : 'Choose a place to start, then set the distance and shop type below.'}
+              </p>
+            </div>
+          </section>
+
+          <div className="ui-page finder-body">
+            <div className="ui-card finder-card">
+              <div className="fs-main">
               <section className="ui-form-section">
                 <SectionHead icon={Ruler} title="Search" />
                 <div className="rad" role="group" aria-label="Search distance">
@@ -331,7 +339,7 @@ export default function UserDashboard() {
                         aria-pressed={active}
                         onClick={() => handleCategorySelect(c)}
                       >
-                        <span className="ui-tile-icon" style={{ background: `${c.color || '#6366f1'}1f`, color: c.color || '#6366f1' }}>
+                        <span className="ui-tile-icon" style={{ background: `${c.color || '#ff7a45'}1f`, color: c.color || '#ff7a45' }}>
                           <Icon className="h-4 w-4" aria-hidden="true" />
                         </span>
                         <span className="min-w-0 leading-tight">{c.label}</span>
@@ -382,7 +390,7 @@ export default function UserDashboard() {
                               className="finder-suggest-item"
                               onClick={() => { handleCategorySelect(c); setKeyword(''); }}
                             >
-                              <span className="finder-suggest-icon" style={{ background: `${c.color || '#6366f1'}1f`, color: c.color || '#6366f1' }}>
+                              <span className="finder-suggest-icon" style={{ background: `${c.color || '#ff7a45'}1f`, color: c.color || '#ff7a45' }}>
                                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                               </span>
                               {c.label}
@@ -395,42 +403,13 @@ export default function UserDashboard() {
                   )}
                 </div>
               </section>
+              </div>
             </div>
+          </div>
+        </form>
 
-            <div className="finder-actionbar">
-              {error && (
-                <div className="ui-notice ui-notice-error w-full" role="alert">
-                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
-                  <span>{typeof error === 'string' ? error : 'Something went wrong. Please try again.'}</span>
-                </div>
-              )}
-              <dl className="finder-summary" aria-label="Your search">
-                <div className={hasLocation ? '' : 'is-empty'}>
-                  <dt><MapPin aria-hidden="true" />Place</dt>
-                  <dd>{hasLocation ? (searchCenter.name || 'Your current location') : 'Not chosen yet'}</dd>
-                </div>
-                <div>
-                  <dt><Ruler aria-hidden="true" />Radius</dt>
-                  <dd>{kmLabel}</dd>
-                </div>
-                <div>
-                  <dt><Store aria-hidden="true" />Shop type</dt>
-                  <dd>{currentCategoryLabel}</dd>
-                </div>
-                {keyword?.trim() && (
-                  <div>
-                    <dt><Search aria-hidden="true" />Keyword</dt>
-                    <dd>{keyword.trim()}</dd>
-                  </div>
-                )}
-              </dl>
-              <button type="submit" disabled={loading || !hasLocation} className="ui-btn ui-btn-primary ui-btn-lg finder-go">
-                <Search className="h-5 w-5" aria-hidden="true" />
-                {loading ? 'Searching…' : 'Show shops'}
-                {!loading && <ArrowRight className="h-5 w-5" aria-hidden="true" />}
-              </button>
-            </div>
-          </form>
+        <div className="ui-page fx-rest">
+
 
           {/* Browse by website status */}
           <section className="mt-10" aria-labelledby="browse-title">

@@ -98,7 +98,7 @@ export const QUICK_PLACES = [
 const hasPhone = (b) => String(b?.phone || b?.phone_number || '').replace(/\D/g, '').length >= 8;
 
 const TAB_CONFIG = {
-  all:              { color: '#6366f1', bg: '#ede9fe', label: 'All Shops' },
+  all:              { color: '#ff7a45', bg: '#ede9fe', label: 'All Shops' },
   websites:         { color: '#10b981', bg: '#d1fae5', label: 'Website Available' },
   'no-websites':    { color: '#f43f5e', bg: '#ffe4e6', label: 'No Website' },
   'good-websites':  { color: '#3b82f6', bg: '#dbeafe', label: 'Good Websites' },
@@ -669,7 +669,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="change-search-title"
-            className="ui-card qs-modal cs-modal w-full sm:max-w-xl flex flex-col"
+            className="ui-card qs-modal cs-modal w-full sm:max-w-2xl flex flex-col"
             style={{ maxHeight: '94vh' }}
           >
             <div className="qs-head">
