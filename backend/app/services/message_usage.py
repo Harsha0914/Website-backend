@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.user import User
 from app.models.whatsapp import WhatsAppConversation, WhatsAppDirection, WhatsAppMessage
-from app.services.whatsapp_guard import _DELIVERED_STATUSES, ist_day_start_utc
+from app.services.whatsapp_guard import _DELIVERED_STATUSES, ist_day_start_utc, outbound_count_today_all
 
 
 def usage_report(db: Session) -> Dict[str, Any]:
@@ -30,7 +30,8 @@ def usage_report(db: Session) -> Dict[str, Any]:
 
     today = ist_day_start_utc()
     week = today - timedelta(days=6)          # today and the 6 days before it (Indian days)
-    limit = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
+    from app.services.app_limits import daily_limit as _limit, limit_info as _limit_info
+    limit = _limit()
 
     rows = (
         db.query(
@@ -53,7 +54,6 @@ def usage_report(db: Session) -> Dict[str, Any]:
     by_owner = {r[0]: r for r in rows}
 
     accounts: List[Dict[str, Any]] = []
-    from app.services.whatsapp_guard import outbound_count_today_all
     shared_reached = bool(limit > 0 and outbound_count_today_all(db) >= limit)   # the limit is shared by all accounts and counts contacts
     for user in db.query(User).order_by(User.id).all():
         r = by_owner.get(user.id)
@@ -77,6 +77,8 @@ def usage_report(db: Session) -> Dict[str, Any]:
     return {
         "generated_at": datetime.utcnow().isoformat(),
         "daily_limit": limit,
+        "limit_settings": _limit_info(),
+        "shared_contacts_today": outbound_count_today_all(db),
         "totals": {
             # the total is the sum of the accounts, so it always matches the rows beneath it
             "sent_today": sum(a["sent_today"] for a in accounts),

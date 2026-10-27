@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { MessageSquare, Users, CalendarDays, Infinity as AllTime, RefreshCw, AlertTriangle } from 'lucide-react';
+import { MessageSquare, Users, CalendarDays, Infinity as AllTime, RefreshCw, AlertTriangle, Gauge, Check } from 'lucide-react';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import api from '../../services/api';
 import { formatDateTimeIST, formatTimeIST } from '../../utils/time';
@@ -16,11 +16,36 @@ export default function AdminMessages() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [limitInput, setLimitInput] = useState('');
+  const [warnInput, setWarnInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState(null);   // { ok: bool, text: string }
+  const editingLimit = React.useRef(false);
+
+  const saveLimit = async (e) => {
+    e?.preventDefault?.();
+    const limit = parseInt(limitInput, 10);
+    if (!Number.isFinite(limit) || limit < 1) { setSaveNote({ ok: false, text: 'Enter a limit of 1 or more.' }); return; }
+    const warn = warnInput === '' ? null : parseInt(warnInput, 10);
+    setSaving(true);
+    try {
+      const res = await api.put('/admin/daily-limit', { limit, warn_at: Number.isFinite(warn) ? warn : null });
+      editingLimit.current = false;
+      setSaveNote({ ok: true, text: res.data.persisted ? `Saved. Every account now has a shared limit of ${res.data.limit} contacts a day.` : `Applied (${res.data.limit} a day), but it is only kept until the server restarts because MongoDB is not connected.` });
+      await load();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      setSaveNote({ ok: false, text: (typeof detail === 'string' && detail) || 'The limit could not be saved. Try again.' });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
       const res = await api.get('/admin/message-usage');
       setData(res.data);
+      if (!editingLimit.current && res.data?.limit_settings) { setLimitInput(String(res.data.limit_settings.limit)); setWarnInput(String(res.data.limit_settings.warn_at)); }
       setUpdatedAt(new Date());
       setFailed(false);
     } catch (err) {
@@ -44,7 +69,7 @@ export default function AdminMessages() {
     { label: 'Sent today (all accounts)', value: totals.sent_today, hint: `${totals.accounts_sent_today} of ${totals.accounts_total} accounts sent today`, icon: MessageSquare, accent: 'text-amber-400 bg-amber-500/10' },
     { label: 'Last 7 days', value: totals.sent_7_days, hint: 'all accounts together', icon: CalendarDays, accent: 'text-sky-400 bg-sky-500/10' },
     { label: 'All time', value: totals.sent_all_time, hint: 'since the first message', icon: AllTime, accent: 'text-emerald-400 bg-emerald-500/10' },
-    { label: 'Accounts at the daily limit', value: totals.accounts_at_limit, hint: `limit is ${data.daily_limit} per account per day`, icon: AlertTriangle, accent: 'text-rose-400 bg-rose-500/10' },
+    { label: 'Accounts at the daily limit', value: totals.accounts_at_limit, hint: `the shared limit is ${data.daily_limit} contacts a day`, icon: AlertTriangle, accent: 'text-rose-400 bg-rose-500/10' },
   ] : [];
 
   return (
@@ -89,6 +114,37 @@ export default function AdminMessages() {
               </div>
             ))}
           </div>
+
+          <form onSubmit={saveLimit} className="bg-slate-950 rounded-2xl border border-slate-800 p-5 shadow-xs">
+            <div className="flex items-center gap-2 mb-3">
+              <Gauge className="w-4 h-4 text-amber-400" />
+              <h2 className="text-sm font-bold text-white">Daily limit</h2>
+              <span className="text-[11px] text-slate-500">one shared limit for all accounts, counted in contacts, resets at midnight (Indian time)</span>
+            </div>
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="min-w-[200px]">
+                <div className="text-[11px] text-slate-400 mb-1">Used today</div>
+                <div className="text-2xl font-extrabold text-white">{data.shared_contacts_today} <span className="text-sm font-semibold text-slate-500">of {data.daily_limit}</span></div>
+                <div className="h-1.5 mt-2 rounded-full bg-slate-800 overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={data.daily_limit} aria-valuenow={data.shared_contacts_today}>
+                  <div className={`h-full rounded-full ${data.shared_contacts_today >= data.daily_limit ? 'bg-rose-500' : data.shared_contacts_today >= (data.limit_settings?.warn_at || Infinity) ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${data.daily_limit > 0 ? Math.min(100, (data.shared_contacts_today / data.daily_limit) * 100) : 0}%` }} />
+                </div>
+              </div>
+              <label className="text-[11px] text-slate-400">
+                Contacts per day
+                <input type="number" min="1" max="100000" value={limitInput} onChange={(e) => { editingLimit.current = true; setLimitInput(e.target.value); }} className="block mt-1 w-32 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white" />
+              </label>
+              <label className="text-[11px] text-slate-400">
+                Tell everyone at
+                <input type="number" min="0" max="100000" value={warnInput} onChange={(e) => { editingLimit.current = true; setWarnInput(e.target.value); }} className="block mt-1 w-28 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white" />
+              </label>
+              <button type="submit" disabled={saving} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-bold disabled:opacity-60">
+                <Check className="w-4 h-4" />
+                {saving ? 'Saving…' : 'Save limit'}
+              </button>
+            </div>
+            {saveNote && <p className={`mt-3 text-xs ${saveNote.ok ? 'text-emerald-400' : 'text-rose-400'}`} role="status">{saveNote.text}</p>}
+            <p className="mt-2 text-[11px] text-slate-500">The change applies at once to every account. Everyone is shown a notice when the total reaches the "tell everyone" number, and sending to new contacts stops at the limit.</p>
+          </form>
 
           <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xs">
             <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-2">

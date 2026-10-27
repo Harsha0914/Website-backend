@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 from typing import Optional
+from pydantic import BaseModel, Field
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.business import Business, WebsiteStatus, WebsiteQuality
@@ -35,6 +36,24 @@ def message_usage(db: Session = Depends(get_db)):
     """Messages sent by each account and the total across all accounts (admins only; the router requires an admin)."""
     from app.services.message_usage import usage_report
     return usage_report(db)
+
+
+class DailyLimitIn(BaseModel):
+    limit: int = Field(..., ge=1, le=100000, description="Contacts all accounts together may message per Indian day")
+    warn_at: Optional[int] = Field(None, ge=0, le=100000, description="Everyone is told when the total reaches this many (default: half the limit)")
+
+
+@router.get("/daily-limit")
+def get_daily_limit_setting():
+    from app.services.app_limits import limit_info
+    return limit_info()
+
+
+@router.put("/daily-limit")
+def put_daily_limit_setting(payload: DailyLimitIn, current_user: User = Depends(require_admin)):
+    """Change the shared daily limit. It applies at once to every account and is remembered across restarts (needs MongoDB)."""
+    from app.services.app_limits import set_limit
+    return set_limit(payload.limit, payload.warn_at, updated_by=(current_user.email or current_user.username or ""))
 
 
 @router.get("/statistics")
