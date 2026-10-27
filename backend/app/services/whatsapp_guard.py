@@ -172,11 +172,12 @@ def daily_limit_status(db: Session, owner_id: Optional[int] = None) -> dict:
     The SHARED daily limit, counted in contacts: {limit, warn_at, sent_today, remaining, reached, resets_at, my_sent_today}.
     sent_today / remaining / reached cover all accounts together; my_sent_today is the calling account's own share.
     """
-    limit = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
+    from app.services.app_limits import daily_limit as _limit, warn_at as _warn
+    limit = _limit()
     sent = outbound_count_today_all(db)
     return {
         "limit": limit,
-        "warn_at": int(settings.WHATSAPP_DAILY_WARNING_AT or 0),
+        "warn_at": _warn(),
         "sent_today": sent,
         "remaining": max(0, limit - sent) if limit > 0 else None,
         "reached": bool(limit > 0 and sent >= limit),
@@ -207,7 +208,8 @@ def can_message(
     if is_opted_out(db, phone):
         return False, "opted_out"
 
-    cap = int(settings.WHATSAPP_DAILY_SEND_LIMIT or 0)
+    from app.services.app_limits import daily_limit as _limit
+    cap = _limit()
     if cap > 0:
         # One limit shared by every account, per Indian day, counted in CONTACTS. A contact already messaged today is
         # never blocked (it is already counted), only a new contact is once the limit is used up.

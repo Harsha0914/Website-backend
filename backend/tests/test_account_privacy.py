@@ -464,3 +464,20 @@ def test_a_test_to_your_own_number_can_be_repeated_but_real_shops_keep_the_30_da
     shop = "919811100002"
     assert send(shop, True)["status"] == "sent"
     assert send(shop, True)["error"] == "recently_contacted"
+
+
+def test_an_admin_can_change_the_shared_daily_limit_and_it_applies_at_once(client, alice, boss, monkeypatch):
+    from app.services import app_limits
+    monkeypatch.setattr(app_limits, "_mongo", lambda: None)
+    monkeypatch.setattr(app_limits, "_memory_doc", None)
+    app_limits._cache.update(at=0.0, doc=None)
+    assert client.put("/api/admin/daily-limit", json={"limit": 80}, headers=_hdr(alice)).status_code in (401, 403)   # members cannot
+    res = client.put("/api/admin/daily-limit", json={"limit": 80}, headers=_hdr(boss))
+    assert res.status_code == 200 and res.json()["limit"] == 80 and res.json()["warn_at"] == 40 and res.json()["persisted"] is False
+    assert client.put("/api/admin/daily-limit", json={"limit": 0}, headers=_hdr(boss)).status_code == 422
+    status = client.get("/api/ai-whatsapp/daily-limit", headers=_hdr(alice)).json()
+    assert status["limit"] == 80 and status["warn_at"] == 40 and status["remaining"] == 80
+    usage = client.get("/api/admin/message-usage", headers=_hdr(boss)).json()
+    assert usage["daily_limit"] == 80 and usage["limit_settings"]["source"] == "admin"
+    app_limits._memory_doc = None
+    app_limits._cache.update(at=0.0, doc=None)
