@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileText, Link2, Building2, X, Check, RotateCcw, Save, Pencil, Image as ImageIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, FileText, Link2, Building2, X, Check, RotateCcw, Save, Pencil, Image as ImageIcon } from 'lucide-react';
 import Navbar from '../../components/layout/Navbar';
 import Footer from '../../components/layout/Footer';
 import { WHATSAPP_TEMPLATES, fillTemplate } from '../../services/whatsappTemplates';
@@ -155,6 +156,7 @@ function TemplateEditor({ template, onClose, onSaved }) {
 
 /** The "Templates" page: open a message template, change its text, and it is saved for every message you send. */
 export default function TemplatesPage() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(null);       // the template being edited
   const [, setTick] = useState(0);              // redraw the cards when saved wording changes
 
@@ -170,6 +172,10 @@ export default function TemplatesPage() {
         <section className="finder-hero results-hero wa-hero">
           <div className="finder-hero-inner results-hero-row">
             <div className="min-w-0">
+              <button type="button" className="tpl-back" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/shops'))}>
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Back
+              </button>
               <h1>Message templates</h1>
               <p>Open a template, change its words, and your version is used the next time you send.</p>
             </div>

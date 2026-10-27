@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   List,
@@ -23,6 +23,9 @@ import BrandLogo from '../common/BrandLogo';
  * quickAction ({ label, onClick }) adds one highlighted button next to the links.
  * Only the results page passes it, so "Quick Select" appears there and nowhere else.
  */
+// Where the highlight was on the previous page, so it can slide from there to the new page's link (the bar is rebuilt on every page).
+let lastPill = null;
+
 export default function Navbar({ quickAction = null }) {
   const { user, isAuthenticated, logout } = useAuthStore();
   const navigate = useNavigate();
@@ -56,6 +59,30 @@ export default function Navbar({ quickAction = null }) {
     ...(user?.role === 'ADMIN' ? [{ to: '/admin/dashboard', label: 'Admin', icon: ShieldCheck }] : []),
   ];
 
+  const location = useLocation();
+  const navRef = useRef(null);
+  const pillRef = useRef(null);
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    const pill = pillRef.current;
+    if (!nav || !pill) return undefined;
+    const active = nav.querySelector('.ui-nav-link-active');
+    if (!active) { pill.style.opacity = '0'; lastPill = null; return undefined; }
+    const to = { left: active.offsetLeft, width: active.offsetWidth };
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    pill.style.transition = 'none';
+    const from = lastPill && !reduce ? lastPill : to;
+    pill.style.left = `${from.left}px`;
+    pill.style.width = `${from.width}px`;
+    pill.style.opacity = '1';
+    void pill.offsetWidth;                                  // let the browser take the starting spot first
+    pill.style.transition = '';
+    pill.style.left = `${to.left}px`;
+    pill.style.width = `${to.width}px`;
+    lastPill = to;
+    return undefined;
+  }, [location.pathname, isAuthenticated, user?.role]);
+
   const linkClass = ({ isActive }) => `ui-nav-link ${isActive ? 'ui-nav-link-active' : ''}`;
   const displayName = user?.full_name || user?.username || 'Account';
   const initial = displayName.trim().charAt(0).toUpperCase();
@@ -74,7 +101,8 @@ export default function Navbar({ quickAction = null }) {
 
         {/* Main links (desktop) */}
         {isAuthenticated && (
-          <nav className="hidden md:flex items-center gap-1" aria-label="Main">
+          <nav ref={navRef} className="hidden md:flex items-center gap-1 ui-nav-track" aria-label="Main">
+            <span ref={pillRef} className="ui-nav-pill" aria-hidden="true" />
             {links.map(({ to, label, icon: Icon }) => (
               <NavLink key={to} to={to} className={linkClass}>
                 <Icon className="h-4 w-4" aria-hidden="true" />
