@@ -42,12 +42,15 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const [image, setImage] = useState(null); // null = text only, or { kind: 'flyer' } / { kind: 'library', id, ... }
   const [sending, setSending] = useState(false);
   const [splitOk, setSplitOk] = useState(false);   // the user chose to send a too-long message in numbered parts
+  const [editedNow, setEditedNow] = useState(false);   // "Back to the original" shows only after an edit made in this window
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [sendMode, setSendMode] = useState(null); // how this shop can really be messaged (24-hour rule)
   const [testState, setTestState] = useState({ busy: false, ok: '', error: '' });
   const dialogRef = useRef(null);
+
+  useEffect(() => { setEditedNow(false); }, [isOpen, templateId]);   // reopening the window or choosing another message starts clean
 
   useEffect(() => {
     if (isOpen) syncSavedMessages().then(() => setSavedTick((n) => n + 1));   // fetch the wording saved on the account, then redraw the cards with it
@@ -105,6 +108,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   // Whatever the user last wrote for this message type is shown again, until they change it.
   const editMessage = (text) => {
     setSplitOk(false);               // a changed text asks again
+    setEditedNow(true);
     setMessage(text);
     if (templateId) saveMessage(templateId, toReusable(text, shop));
   };
@@ -123,6 +127,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
   const backToOriginal = () => {
     if (templateId) clearSavedMessage(templateId);
     setMessage(filledTemplate);
+    setEditedNow(false);
   };
 
   const chooseTemplate = (t) => {
@@ -284,7 +289,7 @@ export default function WhatsAppLaunchModal({ business, isOpen, onClose, onSent 
                     {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
                     {copied ? 'Copied' : 'Copy text'}
                   </button>
-                  {edited && (
+                  {edited && editedNow && (
                     <button type="button" onClick={backToOriginal} className="ui-btn ui-btn-ghost ui-btn-sm">
                       <RotateCcw className="h-4 w-4" aria-hidden="true" />
                       Back to the original
