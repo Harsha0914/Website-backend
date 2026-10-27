@@ -597,7 +597,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                     </div>
                   )}
                   {viewMode === 'list' ? (
-                    <div className="shop-list" role="list">
+                    <div className="shop-list" role="list" key={`list-${category || 'all'}`}>
                       <div className="shop-list-head" aria-hidden="true">
                         <span />
                         <span>Shop</span>
@@ -793,14 +793,16 @@ export default function ShopsPage({ defaultTab = 'all' }) {
 
       {pickedShops.length > 0 && !showBroadcastModal && (
         <div className="pick-bar" role="region" aria-label="Selected shops">
+          <span className="pick-bar-count" aria-hidden="true">{pickedShops.length}</span>
           <div className="pick-bar-info">
-            <strong>{pickedShops.length} shop{pickedShops.length === 1 ? '' : 's'} selected</strong>
+            <strong>{pickedShops.length === 1 ? 'shop' : 'shops'} selected</strong>
+            <span className="pick-bar-sub">Ready for a WhatsApp message</span>
             {dailyLimit.available && Number.isFinite(dailyLimit.remaining) && pickedShops.length > dailyLimit.remaining && (
               <span className="pick-bar-warn">Only {dailyLimit.remaining} more contact{dailyLimit.remaining === 1 ? '' : 's'} can be messaged today; the rest will wait.</span>
             )}
           </div>
           <button type="button" className="pick-bar-clear" onClick={clearPicked}>Clear</button>
-          <button type="button" className="ui-btn ui-btn-success pick-bar-send" onClick={() => setShowBroadcastModal(true)} disabled={dailyLimit.reached}>
+          <button type="button" className="pick-bar-send" onClick={() => setShowBroadcastModal(true)} disabled={dailyLimit.reached}>
             <Send className="h-4 w-4" aria-hidden="true" />
             Send WhatsApp Message ({pickedShops.length})
           </button>

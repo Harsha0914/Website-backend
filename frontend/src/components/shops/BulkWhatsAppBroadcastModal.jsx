@@ -55,6 +55,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
 
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID);
   const touchedRef = useRef(false);   // true once the user has typed in this window
+  const [editedNow, setEditedNow] = useState(false);   // "Back to the original" shows only after an edit made in this window
   const [message, setMessage] = useState(() => getSavedMessage(DEFAULT_TEMPLATE_ID) || getTemplate(DEFAULT_TEMPLATE_ID).body);
   const [image, setImage] = useState(getTemplate(DEFAULT_TEMPLATE_ID).includeFlyer ? FLYER_VALUE : null);
   const [library, setLibrary] = useState([]);       // the account's pictures (loaded by the picker)
@@ -225,6 +226,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
   useEffect(() => {
     if (!isOpen) return;
     touchedRef.current = false;
+    setEditedNow(false);
     syncSavedMessages().then((server) => {
       if (server && !touchedRef.current) setMessage(getSavedMessage(templateId) || getTemplate(templateId).body);
     });
@@ -233,12 +235,14 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
   const pickTemplate = (t) => {
     setTemplateId(t.id);
     setMessage(getSavedMessage(t.id) || t.body);
+    setEditedNow(false);
     setImage((current) => current ?? (t.includeFlyer ? FLYER_VALUE : null));
   };
 
   // The newest text the user wrote stays saved for this message type until they change it again.
   const editMessage = (text) => {
     touchedRef.current = true;
+    setEditedNow(true);
     setMessage(text);
     saveMessage(templateId, text);
   };
@@ -256,6 +260,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
   const backToOriginal = () => {
     clearSavedMessage(templateId);
     setMessage(originalBody);
+    setEditedNow(false);
   };
 
   if (!isOpen) return null;
@@ -281,7 +286,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
         role="dialog"
         aria-modal="true"
         aria-labelledby="bulk-wa-title"
-        className="ui-card qs-modal w-full flex flex-col sm:max-w-2xl"
+        className="ui-card qs-modal qs-compact w-full flex flex-col sm:max-w-xl"
         style={{ maxHeight: '94vh', height: step === 'message' ? 'auto' : '94vh' }}
       >
         {/* Header */}
@@ -402,7 +407,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
         {/* ───────── Step 2: message ───────── */}
         {step === 'message' && (
           <>
-            <div className="px-5 py-4 space-y-4 overflow-y-auto">
+            <div className="px-4 py-3 space-y-3 overflow-y-auto">
               {preselectAll && (
                 <div className="qs-to" role="note">
                   <Users className="h-4 w-4" aria-hidden="true" />
@@ -423,7 +428,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                       <button
                         key={t.id} type="button" role="radio" aria-checked={active}
                         onClick={() => pickTemplate(t)}
-                        className="ui-card text-left p-3"
+                        className="ui-card text-left p-2.5"
                         style={active ? { borderColor: 'var(--ui-primary)', boxShadow: 'var(--ui-focus)' } : undefined}
                       >
                         <span className="block font-semibold text-sm" style={{ color: 'var(--ui-text)' }}>{t.name}</span>
@@ -436,9 +441,9 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
 
               <div>
                 <label htmlFor="bulk-message" className="ui-label">Message <span className="ui-muted">(you can edit it)</span></label>
-                <textarea id="bulk-message" value={message} onChange={(e) => editMessage(e.target.value)} onPaste={handlePaste} rows={8} className="ui-input" style={{ lineHeight: 1.55, resize: 'vertical', minHeight: 150 }} />
+                <textarea id="bulk-message" value={message} onChange={(e) => editMessage(e.target.value)} onPaste={handlePaste} rows={6} className="ui-input" style={{ lineHeight: 1.5, resize: 'vertical', minHeight: 110, fontSize: '0.9rem' }} />
                 <p className="ui-help mt-1">Each shop's own details are filled in: <code>{'{shop_name}'}</code>, <code>{'{category}'}</code>, <code>{'{city}'}</code>. Your latest wording is saved and shown here next time.</p>
-                {message !== originalBody && (
+                {editedNow && message !== originalBody && (
                   <button type="button" onClick={backToOriginal} className="ui-btn ui-btn-ghost ui-btn-sm mt-1">
                     <RotateCcw className="h-4 w-4" aria-hidden="true" />
                     Back to the original
@@ -476,7 +481,7 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
                 <div className="rounded-2xl p-3" style={{ background: 'var(--ui-surface-2)', border: '1px solid var(--ui-border)' }}>
                   <div className="ml-auto max-w-[92%] rounded-2xl px-3 py-3 text-sm" style={{ background: 'var(--ui-success-soft)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderBottomRightRadius: 4, overflowWrap: 'anywhere', lineHeight: 1.5 }}>
                     {image && (
-                      <img src={pictureSrc(image)} alt="The picture that is sent with the message" className="w-full rounded-xl mb-2" style={{ maxHeight: 360, objectFit: 'cover', objectPosition: image.kind === 'flyer' ? 'top' : 'center' }} />
+                      <img src={pictureSrc(image)} alt="The picture that is sent with the message" className="w-full rounded-xl mb-2" style={{ maxHeight: 200, objectFit: 'cover', objectPosition: image.kind === 'flyer' ? 'top' : 'center' }} />
                     )}
                     <div className="whitespace-pre-wrap px-1">{fillTemplate(message, previewShop).trim() || <span className="ui-muted">Your message is empty.</span>}</div>
                   </div>
@@ -485,11 +490,11 @@ export default function BulkWhatsAppBroadcastModal({ isOpen, onClose, shops = []
 
             </div>
 
-            <div className="px-5 py-4 border-t flex flex-wrap items-center justify-between gap-2" style={{ borderColor: 'var(--ui-border)' }}>
+            <div className="px-4 py-2.5 border-t flex flex-wrap items-center justify-between gap-2" style={{ borderColor: 'var(--ui-border)' }}>
               <p className="text-sm" style={{ color: 'var(--ui-muted)' }}>
                 Will be sent to {selectedCount} shop{selectedCount === 1 ? '' : 's'}, one after another.
               </p>
-              <button type="button" onClick={startSending} disabled={!message.trim() || selectedCount === 0} className="ui-btn ui-btn-success">
+              <button type="button" onClick={startSending} disabled={!message.trim() || selectedCount === 0} className="ui-btn ui-btn-success qs-go">
                 <Send className="h-4 w-4" aria-hidden="true" />
                 Start sending to {selectedCount}
               </button>
