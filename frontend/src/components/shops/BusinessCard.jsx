@@ -80,8 +80,17 @@ export function BusinessCard({ business, onSelect, isSelected = false, selectabl
           aria-label={rowPickable ? `${business.name}. ${rowPicked ? 'Selected for the WhatsApp message. Press to clear.' : 'Press to select for the WhatsApp message.'}` : business.name}
           title={!selectable ? undefined : !canMessage ? 'This shop has no phone number, so it cannot be messaged' : lastContacted ? `Already messaged in the last ${contacted.days} days` : rowPicked ? 'Selected. Click the row to clear it.' : 'Click the row to select this shop for a WhatsApp message'}
         >
-          <div className="shop-row-check" aria-hidden="true">
-            {rowPicked ? <Check className="shop-row-tick" strokeWidth={3.2} /> : null}
+          <div className="shop-row-check">
+            <input
+              type="checkbox"
+              className="shop-row-box"
+              checked={Boolean(rowPicked)}
+              disabled={!rowPickable}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => onToggleCheck(business)}
+              aria-label={`Select ${business.name} for the WhatsApp message`}
+              title={!selectable ? undefined : !canMessage ? 'This shop has no phone number, so it cannot be messaged' : lastContacted ? `Already messaged in the last ${contacted.days} days` : rowPicked ? 'Selected. Untick to clear it.' : 'Tick to select this shop for a WhatsApp message'}
+            />
           </div>
 
           <div className="shop-row-name">
