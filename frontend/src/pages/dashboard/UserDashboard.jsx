@@ -42,11 +42,11 @@ import api from '../../services/api';
 import { resolveKeywordToCategories } from '../../utils/searchMatcher';
 
 const CATEGORIES = [
-  { value: '', label: 'All Categories', icon: Store, color: '#ff7a45' },
+  { value: '', label: 'All Categories', icon: Store, color: '#3b5be6' },
   { value: 'Grocery Store', label: 'Grocery Store', icon: ShoppingBag, color: '#10b981' },
   { value: 'Supermarket', label: 'Supermarket', icon: ShoppingBag, color: '#059669' },
   { value: 'General Store', label: 'General Store', icon: Store, color: '#8b5cf6' },
-  { value: 'Department Store', label: 'Department Store', icon: Building2, color: '#ff7a45' },
+  { value: 'Department Store', label: 'Department Store', icon: Building2, color: '#3b5be6' },
   { value: 'Meat & Poultry', label: 'Meat & Poultry', icon: Store, color: '#e11d48' },
   { value: 'Pharmacy', label: 'Pharmacy', icon: Pill, color: '#ef4444' },
   { value: 'Bakery', label: 'Bakery', icon: Coffee, color: '#f59e0b' },
@@ -235,7 +235,7 @@ export default function UserDashboard() {
         <form onSubmit={handleSearchSubmit} aria-label="Find shops" className="fx-form">
           <section className="finder-hero">
             <div className="finder-hero-inner">
-              <h1>Find shops near you</h1>
+              <h1>Find shops <span className="hl">near you</span></h1>
               <p>
                 Search a place, then choose a distance and a shop type. We show which nearby shops already have a
                 website and which do not, so you know exactly who to reach out to.
@@ -339,7 +339,7 @@ export default function UserDashboard() {
                         aria-pressed={active}
                         onClick={() => handleCategorySelect(c)}
                       >
-                        <span className="ui-tile-icon" style={{ background: `${c.color || '#ff7a45'}1f`, color: c.color || '#ff7a45' }}>
+                        <span className="ui-tile-icon" style={{ background: `${c.color || '#3b5be6'}1f`, color: c.color || '#3b5be6' }}>
                           <Icon className="h-4 w-4" aria-hidden="true" />
                         </span>
                         <span className="min-w-0 leading-tight">{c.label}</span>
@@ -390,7 +390,7 @@ export default function UserDashboard() {
                               className="finder-suggest-item"
                               onClick={() => { handleCategorySelect(c); setKeyword(''); }}
                             >
-                              <span className="finder-suggest-icon" style={{ background: `${c.color || '#ff7a45'}1f`, color: c.color || '#ff7a45' }}>
+                              <span className="finder-suggest-icon" style={{ background: `${c.color || '#3b5be6'}1f`, color: c.color || '#3b5be6' }}>
                                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                               </span>
                               {c.label}

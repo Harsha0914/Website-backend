@@ -98,7 +98,7 @@ export const QUICK_PLACES = [
 const hasPhone = (b) => String(b?.phone || b?.phone_number || '').replace(/\D/g, '').length >= 8;
 
 const TAB_CONFIG = {
-  all:              { color: '#ff7a45', bg: '#ede9fe', label: 'All Shops' },
+  all:              { color: '#3b5be6', bg: '#ede9fe', label: 'All Shops' },
   websites:         { color: '#10b981', bg: '#d1fae5', label: 'Website Available' },
   'no-websites':    { color: '#f43f5e', bg: '#ffe4e6', label: 'No Website' },
   'good-websites':  { color: '#3b82f6', bg: '#dbeafe', label: 'Good Websites' },
@@ -366,7 +366,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
         <section className="finder-hero results-hero">
           <div className="finder-hero-inner results-hero-row">
             <div className="min-w-0">
-              <h1>Shops near {locationName}</h1>
+              <h1>Shops near <span className="hl">{locationName}</span></h1>
               <p aria-live="polite">{statusLine}</p>
               <div className="results-pills">
                 {sourceLabel && !loading && (

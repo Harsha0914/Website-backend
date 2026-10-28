@@ -30,19 +30,19 @@ const userLocationIcon = L.divIcon({
       </style>
       <div style="
         position:absolute;width:28px;height:28px;
-        background:rgba(255, 122, 69,0.35);border-radius:50%;
+        background:rgba(59, 91, 230,0.35);border-radius:50%;
         animation:gpsRing 2s cubic-bezier(0,0,0.2,1) infinite;
       "></div>
       <div style="
         position:absolute;width:18px;height:18px;
-        background:rgba(255, 122, 69,0.2);border-radius:50%;
+        background:rgba(59, 91, 230,0.2);border-radius:50%;
         animation:gpsRing 2s cubic-bezier(0,0,0.2,1) infinite;animation-delay:0.4s;
       "></div>
       <div style="
         position:relative;width:12px;height:12px;
-        background:linear-gradient(135deg,#ff7a45,#8b5cf6);
+        background:linear-gradient(135deg,#3b5be6,#8b5cf6);
         border:2.5px solid #ffffff;border-radius:50%;
-        box-shadow:0 0 12px rgba(255, 122, 69,0.9);
+        box-shadow:0 0 12px rgba(59, 91, 230,0.9);
       "></div>
     </div>
   `,
@@ -163,7 +163,7 @@ export function BusinessMap({
         <Marker position={validCenter} icon={userLocationIcon}>
           <Popup>
             <div style={{ padding: '8px 4px', fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:6, color:'#ff7a45', marginBottom:4 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, color:'#3b5be6', marginBottom:4 }}>
                 <Navigation style={{ width:13, height:13 }} />
                 <span>Your GPS Location</span>
               </div>
@@ -179,8 +179,8 @@ export function BusinessMap({
           center={validCenter}
           radius={radiusKm * 1000}
           pathOptions={{
-            color: '#ff7a45',
-            fillColor: '#ff7a45',
+            color: '#3b5be6',
+            fillColor: '#3b5be6',
             fillOpacity: 0.04,
             weight: 2,
             dashArray: '8, 6',
@@ -206,7 +206,7 @@ export function BusinessMap({
             >
               <Popup minWidth={240} maxWidth={280}>
                 <div style={{ padding:'4px 2px', fontSize:12 }}>
-                  <div style={{ fontSize:9, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.08em', color:'#ff7a45', marginBottom:3 }}>
+                  <div style={{ fontSize:9, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.08em', color:'#3b5be6', marginBottom:3 }}>
                     {b.category || 'Local Shop'}
                   </div>
                   <h4 style={{ margin:'0 0 6px', fontSize:13, fontWeight:900, lineHeight:1.25 }}>
@@ -242,7 +242,7 @@ export function BusinessMap({
                       {hasWebsite ? 'âœ“ Website' : 'âœ— No Website'}
                     </span>
                     {b.distance_km != null && (
-                      <span style={{ fontSize:10.5, fontWeight:700, color:'#ff7a45' }}>
+                      <span style={{ fontSize:10.5, fontWeight:700, color:'#3b5be6' }}>
                         {formatDistance(b.distance_km)}
                       </span>
                     )}
@@ -256,7 +256,7 @@ export function BusinessMap({
                       style={{
                         flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:4,
                         padding:'6px 8px', borderRadius:8,
-                        background:'linear-gradient(135deg,#ff7a45,#8b5cf6)',
+                        background:'linear-gradient(135deg,#3b5be6,#8b5cf6)',
                         color:'#fff', fontSize:10.5, fontWeight:700, textDecoration:'none', minWidth:70,
                       }}
                     >
@@ -299,11 +299,11 @@ export function BusinessMap({
       {businesses.length > 0 && (
         <div style={{
           position:'absolute', top:12, left:12, zIndex:1000,
-          background:'linear-gradient(135deg,#ff7a45,#ff6b35)',
+          background:'linear-gradient(135deg,#3b5be6,#2a4ad8)',
           backdropFilter:'blur(8px)',
           color:'#fff', fontSize:11, fontWeight:800,
           padding:'6px 14px', borderRadius:99,
-          boxShadow:'0 4px 16px rgba(255, 122, 69,0.4)',
+          boxShadow:'0 4px 16px rgba(59, 91, 230,0.4)',
           display:'flex', alignItems:'center', gap:6,
           pointerEvents:'none',
         }}>
@@ -330,7 +330,7 @@ export function BusinessMap({
         pointerEvents: 'auto',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '11px', color: '#0f172a', marginBottom: '8px' }}>
-          <Layers style={{ width: 13, height: 13, color: '#ff7a45' }} />
+          <Layers style={{ width: 13, height: 13, color: '#3b5be6' }} />
           <span>Map Legend</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

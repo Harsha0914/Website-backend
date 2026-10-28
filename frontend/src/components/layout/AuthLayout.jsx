@@ -16,9 +16,9 @@ export default function AuthLayout({ title, subtitle, children, footer, compact 
   }, []);
 
   return (
-    <div className={`min-h-screen flex flex-col ${compact ? 'auth-compact' : ''}`} style={{ background: 'var(--ui-bg)' }}>
+    <div className={`min-h-screen flex flex-col auth-v3 ${compact ? 'auth-compact' : ''}`} style={{ background: 'var(--ui-bg)' }}>
       <main className={`flex-1 flex items-start sm:items-center justify-center px-4 ${compact ? 'py-4 pb-24 sm:pb-4' : 'py-10 pb-28'}`}>
-        <div className={`w-full relative ${'max-w-md'}`}>
+        <div className={`w-full relative auth-v3-box ${compact ? '' : 'is-roomy'}`}>
           <Link to="/" className="auth-back">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Back to home
@@ -28,7 +28,7 @@ export default function AuthLayout({ title, subtitle, children, footer, compact 
             {subtitle && <p className="ui-lead mx-auto">{subtitle}</p>}
           </div>
 
-          <div className="ui-card ui-card-pad">{children}</div>
+          <div className="ui-card ui-card-pad auth-v3-card">{children}</div>
 
           {footer && <div className={`${compact ? 'mt-3' : 'mt-6'} text-center`}>{footer}</div>}
         </div>
