@@ -19,6 +19,7 @@ export function AdminLayout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sideShown, setSideShown] = useState(false);   // desktop: the sidebar slides in when the mouse is at the left edge
 
   const handleLogout = async () => {
     await logout();
@@ -61,7 +62,7 @@ export function AdminLayout() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col md:flex-row admin-light">
 
       {/* ── Mobile Top Bar ─────────────────────────────────── */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-slate-950 border-b border-slate-800 sticky top-0 z-50">
@@ -104,13 +105,19 @@ export function AdminLayout() {
       )}
 
       {/* ── Desktop Sidebar ─────────────────────────────────── */}
-      <aside className="hidden md:flex w-64 bg-slate-950 border-r border-slate-800 flex-col shrink-0">
+      <aside
+        className={`admin-side hidden md:flex w-64 bg-slate-950 border-r border-slate-800 flex-col shrink-0 ${sideShown ? 'is-open' : ''}`}
+        onMouseEnter={() => setSideShown(true)}
+        onMouseLeave={() => setSideShown(false)}
+        onFocus={() => setSideShown(true)}
+        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setSideShown(false); }}
+      >
         <div className="p-5 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
               <ShieldCheck className="w-5 h-5" />
             </div>
-            <div>
+            <div className="admin-side-text">
               <h2 className="text-sm font-bold text-white tracking-tight">Admin Portal</h2>
               <p className="text-[10px] text-slate-400">ShopPresence Management</p>
             </div>
@@ -122,7 +129,7 @@ export function AdminLayout() {
             to="/dashboard"
             className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-xl transition-colors mb-2"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 shrink-0" />
             <span>Back to User App</span>
           </Link>
         </div>
@@ -131,14 +138,14 @@ export function AdminLayout() {
 
         {/* Bottom user box */}
         <div className="p-4 border-t border-slate-800 flex items-center justify-between">
-          <div className="truncate">
+          <div className="truncate admin-side-text">
             <p className="text-xs font-bold text-white truncate">{user?.full_name}</p>
             <p className="text-[10px] text-amber-400 font-mono">ROLE: {user?.role}</p>
           </div>
           <button
             onClick={handleLogout}
             title="Sign Out"
-            className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-950/40 rounded-lg transition-colors"
+            className="admin-side-out p-2 text-slate-400 hover:text-red-400 hover:bg-red-950/40 rounded-lg transition-colors"
           >
             <LogOut className="w-4 h-4" />
           </button>

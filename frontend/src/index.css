@@ -1686,3 +1686,54 @@ html:not(.dark) .lp2-btn-secondary:hover { background: #eef2ff; border-color: #a
 @keyframes hl-draw { to { transform: scaleX(1); } }
 .dark .hl::after { background: linear-gradient(90deg, rgba(79, 109, 240, .55), rgba(139, 92, 246, .5)); }
 @media (prefers-reduced-motion: reduce) { .hl::after { animation: none; transform: scaleX(1); } }
+
+/* ── Admin portal in light mode: the same white, blue and rounded look as the rest of the app ───────────────── */
+html:not(.dark) .admin-light { background: #fbfbfe !important; color: #12162b; }
+html:not(.dark) .admin-light .bg-slate-950 { background-color: #ffffff !important; }
+html:not(.dark) .admin-light .bg-slate-900 { background-color: #fbfbfe !important; }
+html:not(.dark) .admin-light .bg-slate-900\/50, html:not(.dark) .admin-light .bg-slate-900\/60, html:not(.dark) .admin-light .bg-slate-950\/50, html:not(.dark) .admin-light .bg-slate-950\/60 { background-color: #f4f6fc !important; }
+html:not(.dark) .admin-light .bg-slate-800 { background-color: #f4f6fc !important; }
+html:not(.dark) .admin-light .bg-slate-800\/50, html:not(.dark) .admin-light .bg-slate-800\/60, html:not(.dark) .admin-light .bg-slate-800\/40 { background-color: #f4f6fc !important; }
+html:not(.dark) .admin-light .hover\:bg-slate-800:hover, html:not(.dark) .admin-light .hover\:bg-slate-900:hover, html:not(.dark) .admin-light .hover\:bg-slate-800\/60:hover, html:not(.dark) .admin-light .hover\:bg-slate-800\/50:hover { background-color: #eef2ff !important; }
+html:not(.dark) .admin-light .border-slate-800, html:not(.dark) .admin-light .border-slate-700, html:not(.dark) .admin-light .border-slate-800\/60, html:not(.dark) .admin-light .border-slate-700\/50, html:not(.dark) .admin-light .divide-slate-800 > * + * { border-color: #e6e9f2 !important; }
+html:not(.dark) .admin-light .text-white { color: #12162b !important; }
+html:not(.dark) .admin-light .text-slate-100, html:not(.dark) .admin-light .text-slate-200 { color: #12162b !important; }
+html:not(.dark) .admin-light .text-slate-300 { color: #2a3358 !important; }
+html:not(.dark) .admin-light .text-slate-400 { color: #4b5470 !important; }
+html:not(.dark) .admin-light .text-slate-500, html:not(.dark) .admin-light .text-slate-600 { color: #6a728c !important; }
+html:not(.dark) .admin-light .hover\:text-white:hover, html:not(.dark) .admin-light .hover\:text-slate-100:hover { color: #12162b !important; }
+html:not(.dark) .admin-light :is([class*="bg-emerald-6"], [class*="bg-emerald-5"]:not([class*="/"]), [class*="bg-rose-6"], [class*="bg-rose-5"]:not([class*="/"]), [class*="bg-red-6"], [class*="bg-blue-6"], [class*="bg-indigo-6"]).text-white { color: #fff !important; }
+/* amber becomes the app's blue */
+html:not(.dark) .admin-light .bg-amber-500 { background-color: #12162b !important; color: #fff !important; box-shadow: 0 12px 22px -12px rgba(18, 22, 43, .7); }
+html:not(.dark) .admin-light .bg-amber-500.text-slate-950, html:not(.dark) .admin-light .bg-amber-500 .text-slate-950 { color: #fff !important; }
+html:not(.dark) .admin-light .hover\:bg-amber-400:hover, html:not(.dark) .admin-light .bg-amber-400 { background-color: #2a4ad8 !important; }
+html:not(.dark) .admin-light .text-amber-400, html:not(.dark) .admin-light .text-amber-500 { color: #1e3a9a !important; }
+html:not(.dark) .admin-light .bg-amber-500\/20, html:not(.dark) .admin-light .bg-amber-500\/10 { background-color: #eef2ff !important; }
+html:not(.dark) .admin-light .border-amber-500\/30, html:not(.dark) .admin-light .border-amber-500\/20 { border-color: #cdd6fc !important; }
+html:not(.dark) .admin-light .text-emerald-400 { color: #047857 !important; }
+html:not(.dark) .admin-light .text-rose-400 { color: #b91c1c !important; }
+html:not(.dark) .admin-light .text-sky-400 { color: #0369a1 !important; }
+html:not(.dark) .admin-light .bg-emerald-500\/10 { background-color: #ecfdf5 !important; }
+html:not(.dark) .admin-light .bg-sky-500\/10 { background-color: #f0f9ff !important; }
+html:not(.dark) .admin-light .bg-rose-500\/10 { background-color: #fef2f2 !important; }
+html:not(.dark) .admin-light .rounded-2xl { border-radius: 22px; }
+html:not(.dark) .admin-light aside { box-shadow: 1px 0 0 #e6e9f2; }
+html:not(.dark) .admin-light .shadow-xs, html:not(.dark) .admin-light .shadow-sm { box-shadow: 0 1px 2px rgba(18, 22, 43, .04), 0 18px 36px -26px rgba(18, 22, 43, .18) !important; }
+html:not(.dark) .admin-light input, html:not(.dark) .admin-light select, html:not(.dark) .admin-light textarea { color: #12162b; }
+html:not(.dark) .admin-light input::placeholder { color: #98a0b8; }
+html:not(.dark) .admin-light h1, html:not(.dark) .admin-light h2 { color: #12162b; }
+html:not(.dark) .admin-light [class*="divide-"] > :not([hidden]) ~ :not([hidden]), html:not(.dark) .admin-light tbody tr, html:not(.dark) .admin-light thead tr { border-color: #eef0f6 !important; }
+html:not(.dark) .admin-light table tr:hover td { background-color: #fafbff; }
+
+/* admin sidebar: a slim icon strip is always visible; pointing at it opens the full menu over the page */
+@media (min-width: 768px) {
+  .admin-side { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; width: 76px !important; overflow: hidden; transition: width .26s cubic-bezier(.2, .8, .2, 1), box-shadow .26s; }
+  .admin-side.is-open { width: 256px !important; box-shadow: 24px 0 60px -24px rgba(18, 22, 43, .35); }
+  .admin-light main { padding-left: calc(76px + 1.75rem) !important; }
+  .admin-side:not(.is-open) .admin-side-text, .admin-side:not(.is-open) nav a span, .admin-side:not(.is-open) .admin-side-out, .admin-side:not(.is-open) > .p-3 a span { display: none; }
+  .admin-side:not(.is-open) nav a, .admin-side:not(.is-open) > .p-3 a { justify-content: center; padding-left: 0; padding-right: 0; }
+  .admin-side:not(.is-open) > .p-5 { padding-left: 0; padding-right: 0; justify-content: center; }
+  .admin-side:not(.is-open) > .p-4 { justify-content: center; padding-left: 0; padding-right: 0; }
+  .admin-side nav a, .admin-side > .p-3 a { white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) { .admin-side { transition: none; } }
