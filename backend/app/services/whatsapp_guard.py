@@ -220,20 +220,23 @@ def can_message(
 
     if check_cooldown:
         days = int(settings.WHATSAPP_REPEAT_COOLDOWN_DAYS or 0)
-        conv = find_conversation_by_phone(db, phone, owner_id)  # cooldown is per account: it never reveals another account's activity
-        if days > 0 and conv:
+        key = phone_key(phone)
+        if days > 0 and len(key) == 10:
             since = datetime.utcnow() - timedelta(days=days)
-            recent = (
+            q = (
                 db.query(WhatsAppMessage.id)
+                .join(WhatsAppConversation, WhatsAppConversation.id == WhatsAppMessage.conversation_id)
                 .filter(
-                    WhatsAppMessage.conversation_id == conv.id,
+                    WhatsAppConversation.phone_number.like(f"%{key}"),
                     WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
                     WhatsAppMessage.status.in_(_DELIVERED_STATUSES),
                     WhatsAppMessage.created_at >= since,
                 )
-                .first()
             )
-            if recent:
+            if owner_id is not _ANY_OWNER:
+                q = q.filter(WhatsAppConversation.owner_id == owner_id)    # per account: it never reveals another account's activity
+            # the same rule as the "Contacted" list on the results page: ANY chat of this account with this number counts
+            if q.first():
                 return False, "recently_contacted"
 
     return True, None

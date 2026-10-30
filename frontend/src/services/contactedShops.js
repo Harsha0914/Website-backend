@@ -7,7 +7,8 @@ import { useEffect, useSyncExternalStore } from 'react';
 import api from './api';
 import { parseServerDate, formatDateIST, daysAgoIST } from '../utils/time';
 
-let state = { map: {}, days: 30, loaded: false };
+let state = { map: {}, days: 30, loaded: false, token: null, at: 0 };
+const currentToken = () => { try { return localStorage.getItem('access_token') || ''; } catch (_) { return ''; } };
 let inflight = null;
 const listeners = new Set();
 
@@ -19,21 +20,42 @@ export const phoneKey = (phone) => String(phone || '').replace(/\D/g, '').slice(
 
 export function refreshContacted() {
   if (inflight) return inflight;
+  const token = currentToken();
   inflight = api.get('/ai-whatsapp/recently-contacted')
     .then((res) => {
       const map = {};
       (res.data?.contacted || []).forEach((c) => { map[c.phone_key] = c.last_sent_at; });
-      state = { map, days: res.data?.days || 30, loaded: true };
+      state = { map, days: res.data?.days || 30, loaded: true, token, at: Date.now() };
     })
     .catch(() => { state = { ...state, loaded: true }; })   // never block the page because of this
     .finally(() => { inflight = null; emit(); });
   return inflight;
 }
 
+/** One shop the server just refused as "contacted recently": show it as contacted at once, then re-read the full list. */
+export function markContactedNow(phone) {
+  const key = phoneKey(phone);
+  if (key.length === 10) {
+    state = { ...state, map: { ...state.map, [key]: state.map[key] || new Date().toISOString() } };
+    emit();
+  }
+  refreshContacted();
+}
+
 /** { map, days, loaded }: loads once, then stays current when refreshContacted() is called after sending. */
 export function useContactedShops() {
   const snapshot = useSyncExternalStore(subscribe, () => state, () => state);
-  useEffect(() => { if (!snapshot.loaded && !inflight) refreshContacted(); }, [snapshot.loaded]);
+  useEffect(() => {
+    // A different account signed in (same tab), or the list is old: read it again, so "Contacted" always matches the server.
+    if (state.token !== currentToken()) state = { map: {}, days: state.days, loaded: false, token: null, at: 0 };
+    if ((!state.loaded || Date.now() - state.at > 15000) && !inflight) refreshContacted();
+    const timer = setInterval(() => { if (!document.hidden) refreshContacted(); }, 30000);
+    const onVisible = () => { if (!document.hidden) refreshContacted(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    window.addEventListener('whatsapp-updated', onVisible);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); window.removeEventListener('whatsapp-updated', onVisible); };
+  }, []);
   return snapshot;
 }
 

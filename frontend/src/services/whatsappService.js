@@ -1,5 +1,6 @@
 import api from './api';
 import { setDailyLimit, dailyLimitMessage } from './dailyLimit';
+import { markContactedNow } from './contactedShops';
 import { fillTemplate, getTemplate } from './whatsappTemplates';
 
 /**
@@ -309,6 +310,7 @@ export async function sendDirectWhatsAppPitch(business, customMessage = null, ov
       : `Message not sent: ${reasons[firstResult.error] || firstResult.error || 'blocked'}`);
     skipErr.skipped = true;
     skipErr.reason = firstResult.error;
+    if (firstResult.error === 'recently_contacted') markContactedNow(targetPhone);   // the list was out of date: flip this shop to Contacted now
     throw skipErr;
   }
 
