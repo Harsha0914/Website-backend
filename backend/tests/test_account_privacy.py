@@ -187,7 +187,7 @@ def _outbound(db, conv, status, when):
     db.commit()
 
 
-def test_recently_contacted_lists_only_my_own_shops_from_the_last_30_days(client, db_session, alice, bob):
+def test_recently_contacted_is_shared_by_every_account_for_the_last_30_days(client, db_session, alice, bob):
     from datetime import datetime, timedelta
     now = datetime.utcnow()
 
@@ -202,15 +202,16 @@ def test_recently_contacted_lists_only_my_own_shops_from_the_last_30_days(client
     _outbound(db_session, chat(alice, "919811122233"), "sent", now - timedelta(days=31))     # window over: can be messaged again
     _outbound(db_session, chat(alice, "919822233344"), "failed", now - timedelta(days=1))    # never left: not contacted
     _outbound(db_session, chat(alice, "919833344455"), "simulated", now - timedelta(days=1)) # test mode: not contacted
-    _outbound(db_session, chat(bob, "919844455566"), "sent", now - timedelta(days=1))        # someone else's shop
+    _outbound(db_session, chat(bob, "919844455566"), "sent", now - timedelta(days=1))        # another account's shop: shared too
 
     mine = client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(alice)).json()
     assert mine["days"] == 30
-    assert [c["phone_key"] for c in mine["contacted"]] == ["9876543210"]
-    assert mine["contacted"][0]["last_sent_at"].startswith(str(now.year))
+    assert sorted(c["phone_key"] for c in mine["contacted"]) == ["9844455566", "9876543210"]   # every account's shops, not just mine
+    assert all(c["last_sent_at"].startswith(str(now.year)) for c in mine["contacted"])
+    assert set(mine["contacted"][0].keys()) == {"phone_key", "last_sent_at"}                    # only the number and the date are shared
 
     theirs = client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(bob)).json()
-    assert [c["phone_key"] for c in theirs["contacted"]] == ["9844455566"]
+    assert sorted(c["phone_key"] for c in theirs["contacted"]) == ["9844455566", "9876543210"]  # the same list in every account
 
 
 def test_recently_contacted_needs_a_login(client):
@@ -481,3 +482,14 @@ def test_an_admin_can_change_the_shared_daily_limit_and_it_applies_at_once(clien
     assert usage["daily_limit"] == 80 and usage["limit_settings"]["source"] == "admin"
     app_limits._memory_doc = None
     app_limits._cache.update(at=0.0, doc=None)
+
+
+def test_a_shop_one_account_messaged_cannot_be_messaged_by_another_account_for_30_days(client, db_session, alice, bob, monkeypatch):
+    _really_sent(monkeypatch)
+    first = _send_to(client, alice, "919800888001")
+    assert first["results"][0]["status"] == "sent"
+    again = _send_to(client, bob, "919800888001")                      # Bob tries the shop Alice already messaged
+    assert again["results"][0]["status"] == "skipped" and again["results"][0]["error"] == "recently_contacted"
+    # the chat itself stays private to Alice
+    chats_bob = client.get("/api/whatsapp/conversations", headers=_hdr(bob)).json()
+    assert all("919800888001" not in str(c.get("phone_number")) for c in (chats_bob if isinstance(chats_bob, list) else chats_bob.get("conversations", [])))

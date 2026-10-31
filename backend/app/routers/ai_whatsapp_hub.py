@@ -650,16 +650,15 @@ def daily_limit(db: Session = Depends(get_db), current_user=Depends(get_current_
 @router.get("/recently-contacted")
 def recently_contacted(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """
-    Shops THIS account has already messaged inside the repeat-contact window (30 days by default), with the time of the
-    latest message. The results pages use it to show "Already contacted" instead of the send button. It only ever
-    looks at the signed-in account's own chats, so it never reveals what another account did.
+    Shops ANY account has already messaged inside the repeat-contact window (30 days by default), with the time of the
+    latest message. The results pages use it to hide / mark shops, so two accounts never message the same shop twice.
+    Only the phone number and the date are shared; no chat or message text is ever shown to another account.
     """
     from datetime import timedelta
     from sqlalchemy import func
-    from app.services.chat_durability import restore_for_user
-    from app.services.whatsapp_guard import _DELIVERED_STATUSES, phone_key
+    from app.services.whatsapp_guard import _DELIVERED_STATUSES, phone_key, _restore_every_account
 
-    restore_for_user(db, current_user)  # after a redeploy the history is in MongoDB, not yet in SQL
+    _restore_every_account(db)  # after a redeploy every account's history is in MongoDB, not yet in SQL
 
     days = int(settings.WHATSAPP_REPEAT_COOLDOWN_DAYS or 0)
     if days <= 0:
@@ -669,7 +668,6 @@ def recently_contacted(db: Session = Depends(get_db), current_user=Depends(get_c
         db.query(WhatsAppConversation.phone_number, func.max(WhatsAppMessage.created_at))
         .join(WhatsAppMessage, WhatsAppMessage.conversation_id == WhatsAppConversation.id)
         .filter(
-            WhatsAppConversation.owner_id == current_user.id,
             WhatsAppMessage.direction == WhatsAppDirection.OUTBOUND,
             WhatsAppMessage.status.in_(_DELIVERED_STATUSES),
             WhatsAppMessage.created_at >= since,

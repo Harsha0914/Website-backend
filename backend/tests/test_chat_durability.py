@@ -213,7 +213,7 @@ def test_a_shop_cannot_be_messaged_twice_in_30_days_even_across_a_redeploy(clien
     assert second["status"] == "skipped" and second["error"] == "recently_contacted"
 
 
-def test_another_account_never_sees_my_contacted_shops_after_a_redeploy(client, db_session, mongo, monkeypatch):
+def test_every_account_sees_the_contacted_shops_after_a_redeploy(client, db_session, mongo, monkeypatch):
     _really_sent(monkeypatch)
     alice = _user(db_session, "Alice", "alice@example.test")
     bob = _user(db_session, "Bob", "bob@example.test")
@@ -221,7 +221,7 @@ def test_another_account_never_sees_my_contacted_shops_after_a_redeploy(client, 
     _wipe_sql(db_session)
     cd._restored_users.clear()
 
-    assert client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(bob)).json()["contacted"] == []
+    assert len(client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(bob)).json()["contacted"]) == 1    # shared with every account
     assert len(client.get("/api/ai-whatsapp/recently-contacted", headers=_hdr(alice)).json()["contacted"]) == 1
 
 

@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import BrandLogo from '../common/BrandLogo';
+import { useDailyLimit } from '../../services/dailyLimit';
+import { todayIST } from '../../utils/time';
 
 /**
  * Top navigation.
@@ -32,6 +34,7 @@ export default function Navbar({ quickAction = null }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef(null);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  const dailyLimit = useDailyLimit();   // the shared count: contacts messaged today by every account together
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -125,6 +128,17 @@ export default function Navbar({ quickAction = null }) {
               <Zap className="h-4 w-4" aria-hidden="true" />
               {quickAction.label}
             </button>
+          )}
+          {isAuthenticated && dailyLimit.available && dailyLimit.limit > 0 && (
+            <Link
+              to={`/whatsapp?day=${todayIST()}&span=1`}
+              className={`nav-count ${dailyLimit.reached ? 'is-full' : (dailyLimit.warnAt > 0 && dailyLimit.sentToday >= dailyLimit.warnAt) ? 'is-warn' : ''}`}
+              title={`${dailyLimit.sentToday} of ${dailyLimit.limit} contacts messaged today by all accounts together${Number.isFinite(dailyLimit.remaining) ? `, ${dailyLimit.remaining} left` : ''}`}
+            >
+              <span className="nav-count-dot" aria-hidden="true" />
+              <b>{dailyLimit.sentToday}</b>
+              <span>/ {dailyLimit.limit} today</span>
+            </Link>
           )}
           <button
             type="button"

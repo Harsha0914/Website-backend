@@ -1808,3 +1808,14 @@ html:not(.dark) .admin-light table tr:hover td { background-color: #fafbff; }
 .lp3-nav a.is-active::after, .dark .lp3-nav a.is-active::after { display: none !important; content: none; }
 .lp3-nav a:hover { background: transparent; color: #2a4ad8; }
 .dark .lp3-nav a:hover { background: transparent; color: #8aa0f6; }
+
+/* the shared "contacts messaged today" count, in the top bar of every page */
+.nav-count { display: none; align-items: center; gap: 7px; padding: 7px 14px; font-size: .84rem; font-weight: 600; color: #4b5470; white-space: nowrap; background: #fff; border: 1px solid #e6e9f2; border-radius: 999px; text-decoration: none; transition: border-color .15s, background .15s; }
+@media (min-width: 640px) { .nav-count { display: inline-flex; } }
+.nav-count b { font-size: .95rem; font-weight: 800; color: #12162b; }
+.nav-count:hover { border-color: #aab9f9; background: #f4f6ff; }
+.nav-count-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 0 3px rgba(16, 185, 129, .18); }
+.nav-count.is-warn .nav-count-dot { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, .2); }
+.nav-count.is-full { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+.nav-count.is-full b { color: #b91c1c; } .nav-count.is-full .nav-count-dot { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, .2); }
+.dark .nav-count { color: #aab3d1; background: #121a38; border-color: #1f2a52; } .dark .nav-count b { color: #f1f4ff; }
