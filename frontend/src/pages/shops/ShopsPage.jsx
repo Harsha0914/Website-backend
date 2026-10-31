@@ -112,7 +112,6 @@ export default function ShopsPage({ defaultTab = 'all' }) {
   const [showModifyModal, setShowModifyModal] = useState(false);
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
   const [picked, setPicked] = useState(() => new Set());   // ids of the shops ticked on this page
-  const contactedState = useContactedShops();
   const navigate = useNavigate();
 
   const {
@@ -135,7 +134,10 @@ export default function ShopsPage({ defaultTab = 'all' }) {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [selectedRating, setSelectedRating] = useState('all');
   const [phoneFilter, setPhoneFilter] = useState('all'); // 'all' | 'with' | 'without'
-  const [sortBy, setSortBy] = useState('rating-desc');
+  const [sortBy] = useState('rating-desc');   // best rated first (there is no sort menu any more)
+  const contactedState = useContactedShops();
+  const [contactFilter, setContactFilter] = useState('not'); // 'not' (default: contacted shops are hidden until the 30 days are over) | 'already' | 'all'
+  const isContacted = (b) => hasPhone(b) && Boolean(contactedAt(contactedState, formatPhoneNumber(b.phone || b.phone_number)));
 
   useEffect(() => { 
     // Only auto-search if no results AND not already loading (avoids duplicate searches from dashboard)
@@ -236,6 +238,8 @@ export default function ShopsPage({ defaultTab = 'all' }) {
     let result = baseFilteredBusinesses.filter(b => {
       if (phoneFilter === 'with' && !hasPhone(b)) return false;
       if (phoneFilter === 'without' && hasPhone(b)) return false;
+      if (contactFilter === 'already' && !isContacted(b)) return false;
+      if (contactFilter === 'not' && isContacted(b)) return false;
       if (selectedRating === 'all') return true;
       const r = b.rating;
       if (selectedRating === 'unrated') {
@@ -254,6 +258,10 @@ export default function ShopsPage({ defaultTab = 'all' }) {
 
     // Sorting
     return [...result].sort((a, b) => {
+      // shops already contacted always go to the bottom; inside each group the chosen order applies
+      const ca = isContacted(a) ? 1 : 0;
+      const cb = isContacted(b) ? 1 : 0;
+      if (ca !== cb) return ca - cb;
       if (sortBy === 'rating-desc') {
         const rA = a.rating != null && !isNaN(a.rating) ? a.rating : -1;
         const rB = b.rating != null && !isNaN(b.rating) ? b.rating : -1;
@@ -275,7 +283,7 @@ export default function ShopsPage({ defaultTab = 'all' }) {
       // default 'distance'
       return (a.distance_km || 999) - (b.distance_km || 999);
     });
-  }, [baseFilteredBusinesses, selectedRating, sortBy, phoneFilter]);
+  }, [baseFilteredBusinesses, selectedRating, sortBy, phoneFilter, contactFilter, contactedState]);
 
   // A shop can be ticked when it has a phone number and was not messaged in the last 30 days (the server would skip it).
   const isPickable = React.useCallback(
@@ -301,6 +309,11 @@ export default function ShopsPage({ defaultTab = 'all' }) {
     return next;
   });
   const clearPicked = () => setPicked(new Set());
+
+  const contactCounts = React.useMemo(() => {
+    const already = baseFilteredBusinesses.filter((b) => hasPhone(b) && contactedAt(contactedState, formatPhoneNumber(b.phone || b.phone_number))).length;
+    return { all: baseFilteredBusinesses.length, already, not: baseFilteredBusinesses.length - already };
+  }, [baseFilteredBusinesses, contactedState]);
 
   const phoneCounts = React.useMemo(() => {
     const withPhone = baseFilteredBusinesses.filter(hasPhone).length;
@@ -463,17 +476,16 @@ export default function ShopsPage({ defaultTab = 'all' }) {
                 />
               </div>
               <div className="md:col-span-3">
-                <label htmlFor="shop-filter-sort" className="sr-only">Sort by</label>
+                <label htmlFor="shop-filter-contact" className="sr-only">Contact status</label>
                 <SelectMenu
-                  id="shop-filter-sort"
-                  ariaLabel="Sort by"
-                  value={sortBy}
-                  onChange={setSortBy}
+                  id="shop-filter-contact"
+                  ariaLabel="Contact status"
+                  value={contactFilter}
+                  onChange={setContactFilter}
                   options={[
-                    { value: 'rating-desc', label: 'Best rated first' },
-                    { value: 'rating-asc', label: 'Lowest rated first' },
-                    { value: 'reviews', label: 'Most reviews' },
-                    { value: 'distance', label: 'Nearest first' },
+                    { value: 'not', label: `Not contacted (${contactCounts.not})` },
+                    { value: 'already', label: `Already contacted (${contactCounts.already})` },
+                    { value: 'all', label: `Show all, contacted too (${contactCounts.all})` },
                   ]}
                 />
               </div>
@@ -542,14 +554,18 @@ export default function ShopsPage({ defaultTab = 'all' }) {
           ) : filteredBusinesses.length === 0 ? (
             <EmptyState
               title={
-                selectedRating !== 'all'
+                contactFilter === 'not' && contactCounts.already > 0 && contactCounts.not === 0
+                  ? 'You have contacted every shop here'
+                  : selectedRating !== 'all'
                   ? `No shops with this rating: ${ratingLabel(selectedRating)}`
                   : activeTab !== 'all'
                   ? `No shops under "${activeTabCfg.label}"`
                   : 'No shops found in this area'
               }
               description={
-                selectedRating !== 'all'
+                contactFilter === 'not' && contactCounts.already > 0 && contactCounts.not === 0
+                  ? `All ${contactCounts.already} shops were messaged in the last 30 days. Each one comes back here after 30 days, or choose "Already contacted" in the filter to see them now.`
+                  : selectedRating !== 'all'
                   ? `${baseFilteredBusinesses.length} other shops match your search. Show all ratings to see them.`
                   : total > 0
                   ? `${total} other shops were found here. Switch to "All Shops" or search a wider area.`
