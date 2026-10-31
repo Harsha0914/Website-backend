@@ -1819,3 +1819,7 @@ html:not(.dark) .admin-light table tr:hover td { background-color: #fafbff; }
 .nav-count.is-full { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
 .nav-count.is-full b { color: #b91c1c; } .nav-count.is-full .nav-count-dot { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, .2); }
 .dark .nav-count { color: #aab3d1; background: #121a38; border-color: #1f2a52; } .dark .nav-count b { color: #f1f4ff; }
+
+/* the shared daily count sits at the top right of every admin page, and stays visible on small screens */
+.admin-count-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.admin-count-row .nav-count { display: inline-flex; }

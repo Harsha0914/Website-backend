@@ -14,10 +14,13 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useDailyLimit } from '../../services/dailyLimit';
+import { todayIST } from '../../utils/time';
 
 export function AdminLayout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const dailyLimit = useDailyLimit();   // the shared count: contacts messaged today by every account together
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sideShown, setSideShown] = useState(false);   // desktop: the sidebar slides in when the mouse is at the left edge
 
@@ -154,6 +157,19 @@ export function AdminLayout() {
 
       {/* ── Main Content Area ──────────────────────────────── */}
       <main className="flex-1 bg-slate-900 min-h-screen overflow-y-auto p-4 sm:p-6 lg:p-8">
+        {dailyLimit.available && dailyLimit.limit > 0 && (
+          <div className="admin-count-row">
+            <Link
+              to={`/whatsapp?day=${todayIST()}&span=1`}
+              className={`nav-count ${dailyLimit.reached ? 'is-full' : (dailyLimit.warnAt > 0 && dailyLimit.sentToday >= dailyLimit.warnAt) ? 'is-warn' : ''}`}
+              title={`${dailyLimit.sentToday} of ${dailyLimit.limit} contacts messaged today by all accounts together`}
+            >
+              <span className="nav-count-dot" aria-hidden="true" />
+              <b>{dailyLimit.sentToday}</b>
+              <span>/ {dailyLimit.limit} today</span>
+            </Link>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>
