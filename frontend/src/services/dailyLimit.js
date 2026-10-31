@@ -73,17 +73,21 @@ export function refreshDailyLimit() {
 }
 
 // Ask the server again every few seconds while someone is looking at the page, so the shared count stays live.
-const POLL_MS = 10000;
+const POLL_MS = 5000;
 let pollTimer = null;
 let watchers = 0;
 function startPolling() {
   if (pollTimer) return;
   pollTimer = setInterval(() => { if (!document.hidden) refreshDailyLimit(); }, POLL_MS);
   document.addEventListener('visibilitychange', onVisible);
+  window.addEventListener('focus', onVisible);
+  window.addEventListener('whatsapp-updated', onVisible);
 }
 function stopPolling() {
   clearInterval(pollTimer); pollTimer = null;
   document.removeEventListener('visibilitychange', onVisible);
+  window.removeEventListener('focus', onVisible);
+  window.removeEventListener('whatsapp-updated', onVisible);
 }
 function onVisible() { if (!document.hidden) refreshDailyLimit(); }
 

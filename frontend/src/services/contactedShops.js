@@ -1,7 +1,7 @@
 /**
- * Which shops this account has already messaged in the last few days (30 by default, set by the server).
- * The shop cards show "Already contacted" instead of the send button, and Quick Select skips these shops.
- * The server only ever returns the signed-in account's own shops.
+ * Which shops have been messaged by any account in the last few days (30 by default, set by the server).
+ * Shared by every account: a shop any account messaged shows as contacted for all of them (only the number and date are shared).
+ * The server returns only the phone number and the date, never any chat.
  */
 import { useEffect, useSyncExternalStore } from 'react';
 import api from './api';
@@ -48,8 +48,8 @@ export function useContactedShops() {
   useEffect(() => {
     // A different account signed in (same tab), or the list is old: read it again, so "Contacted" always matches the server.
     if (state.token !== currentToken()) state = { map: {}, days: state.days, loaded: false, token: null, at: 0 };
-    if ((!state.loaded || Date.now() - state.at > 15000) && !inflight) refreshContacted();
-    const timer = setInterval(() => { if (!document.hidden) refreshContacted(); }, 30000);
+    if ((!state.loaded || Date.now() - state.at > 8000) && !inflight) refreshContacted();
+    const timer = setInterval(() => { if (!document.hidden) refreshContacted(); }, 15000);
     const onVisible = () => { if (!document.hidden) refreshContacted(); };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);

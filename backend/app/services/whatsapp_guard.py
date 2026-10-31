@@ -233,9 +233,9 @@ def can_message(
                     WhatsAppMessage.created_at >= since,
                 )
             )
-            if owner_id is not _ANY_OWNER:
-                q = q.filter(WhatsAppConversation.owner_id == owner_id)    # per account: it never reveals another account's activity
-            # the same rule as the "Contacted" list on the results page: ANY chat of this account with this number counts
+            # shared by all accounts, and the same rule as the "Contacted" list on the results page: a message from ANY
+            # account to this number inside the window counts, so two accounts never contact the same shop twice
+            _restore_every_account(db)
             if q.first():
                 return False, "recently_contacted"
 
