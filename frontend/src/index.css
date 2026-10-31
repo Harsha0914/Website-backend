@@ -288,7 +288,7 @@ a[href*="google.com/maps"] {
 }
 
 body {
-  font-family: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.55;
   background: var(--ui-bg);
@@ -1082,7 +1082,7 @@ main.flex-1 { animation: page-in .42s cubic-bezier(.2, .7, .2, 1) both; }
 .lp2-final-btn.is-ghost { color: #fff; background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .34); box-shadow: none; }
 
 /* ── Brand logo: shop icon on a tile + bold name ──────────────────────────── */
-.brand-word { display: inline-flex; align-items: center; gap: .55em; font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-weight: 700; letter-spacing: -0.03em; line-height: 1; white-space: nowrap; color: var(--ui-text); }
+.brand-word { display: inline-flex; align-items: center; gap: .55em; font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; font-weight: 700; letter-spacing: -0.03em; line-height: 1; white-space: nowrap; color: var(--ui-text); }
 .brand-md { font-size: 0.92rem; }
 .brand-lg { font-size: 1.02rem; }
 .brand-sm { font-size: 0.82rem; }
@@ -1272,7 +1272,7 @@ main.flex-1 { animation: page-in .42s cubic-bezier(.2, .7, .2, 1) both; }
 
 /* ── Typography from the restaurant demo: Playfair Display SC for headings, Karla for everything else ───────────────── */
 h1, h2, .ui-h1, .ui-h2, .qs-title, .brand-word, .lp2-hero h1, .finder-hero h1, .results-hero h1 {
-  font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif !important;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif !important;
   font-weight: 700;
   letter-spacing: 0.015em !important;
 }
@@ -1280,7 +1280,7 @@ h1, h2, .ui-h1, .ui-h2, .qs-title, .brand-word, .lp2-hero h1, .finder-hero h1, .
 
 /* ── Mr LAD-style look: white page, big friendly headings, rounded white cards with thin borders, blue accents ───────────────── */
 h1, h2, .ui-h1, .ui-h2, .qs-title, .brand-word, .lp2-hero h1, .finder-hero h1, .results-hero h1 {
-  font-family: 'Bricolage Grotesque', 'Space Grotesk', ui-sans-serif, system-ui, sans-serif !important;
+  font-family: 'Inter', 'DM Sans', ui-sans-serif, system-ui, sans-serif !important;
   font-weight: 800; letter-spacing: -0.03em !important; font-variant: normal;
 }
 .ui-card, .finder-card, .results-filters, .shop-list, .results-stat, .pick-row { border-radius: 20px; }
@@ -1426,7 +1426,7 @@ html:not(.dark) .lp2-btn-secondary:hover { background: #eef2ff; border-color: #a
 .lp3-strip p { margin-bottom: 18px; font-size: .68rem; letter-spacing: .2em; }
 .lp3-line { overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); }
 .lp3-line-inner { display: flex; gap: 52px; width: max-content; animation: lp3-marquee 46s linear infinite; }
-.lp3-line-inner span { font-family: 'Bricolage Grotesque', 'Space Grotesk', sans-serif; font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em; color: #12162b; white-space: nowrap; }
+.lp3-line-inner span { font-family: 'Inter', 'DM Sans', sans-serif; font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em; color: #12162b; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .lp3-line-inner { animation: none; } }
 
 /* hero without the card: one centred block */
@@ -1538,7 +1538,7 @@ html:not(.dark) .lp2-btn-secondary:hover { background: #eef2ff; border-color: #a
 .dark .lp4-foot-links a { color: #aab3d1; } .dark .lp4-foot-links a:hover { background: #1f2a52; color: #fff; }
 
 /* footer: one big wordmark that rises in letter by letter, with a soft shimmer passing over it */
-.lp4-word { display: flex; justify-content: center; max-width: 1152px; margin: 0 auto; padding: 44px 16px 8px; overflow: hidden; font-family: 'Bricolage Grotesque', 'Space Grotesk', sans-serif; font-size: clamp(2.4rem, 9.5vw, 8rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1; white-space: nowrap; user-select: none; }
+.lp4-word { display: flex; justify-content: center; max-width: 1152px; margin: 0 auto; padding: 44px 16px 8px; overflow: hidden; font-family: 'Inter', 'DM Sans', sans-serif; font-size: clamp(2.4rem, 9.5vw, 8rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1; white-space: nowrap; user-select: none; }
 .lp4-word span { display: inline-block; white-space: pre; color: transparent; background: linear-gradient(100deg, #cdd6fc 0%, #cdd6fc 38%, #2a4ad8 50%, #cdd6fc 62%, #cdd6fc 100%) 0 0 / 260% 100%; -webkit-background-clip: text; background-clip: text; transform: translateY(40%); opacity: 0; transition: transform .7s cubic-bezier(.2, .8, .2, 1), opacity .6s ease; transition-delay: calc(var(--i) * 40ms); animation: lp4-shimmer 5s ease-in-out infinite; }
 .lp4-word.is-in span { transform: none; opacity: 1; }
 @keyframes lp4-shimmer { 0%, 12% { background-position: 130% 0; } 55%, 100% { background-position: -30% 0; } }
@@ -1737,3 +1737,74 @@ html:not(.dark) .admin-light table tr:hover td { background-color: #fafbff; }
   .admin-side nav a, .admin-side > .p-3 a { white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { .admin-side { transition: none; } }
+
+/* heading: no highlighter band; the last words are blue-to-violet gradient text */
+.hl::after, .dark .hl::after { display: none !important; content: none; }
+.hl { background: linear-gradient(90deg, #2563eb 0%, #4f46e5 55%, #6d4be0 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; padding-right: .04em; }
+.dark .hl { background: linear-gradient(90deg, #7ea2ff 0%, #8f8bff 55%, #b79bff 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+
+/* landing heading: no lavender band; "need a website" is blue-to-violet gradient text */
+.lp3-mark::after, .dark .lp3-mark::after { display: none !important; content: none; }
+.lp3-mark { background: linear-gradient(90deg, #2563eb 0%, #4f46e5 55%, #6d4be0 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; padding-right: .05em; }
+.dark .lp3-mark { background: linear-gradient(90deg, #7ea2ff 0%, #8f8bff 55%, #b79bff 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+
+/* shop types as picture cards that drift slowly */
+.lp3-line-inner { gap: 16px; align-items: stretch; }
+.lp3-line-inner span.lp5-card { display: block; flex: none; width: 168px; padding: 8px 8px 12px; background: #fff; border: 1px solid #e6e9f2; border-radius: 22px; box-shadow: 0 1px 2px rgba(18, 22, 43, .04), 0 18px 30px -24px rgba(18, 22, 43, .3); transition: transform .2s, box-shadow .2s; font-size: 1rem; }
+.lp5-card:hover { transform: translateY(-5px); box-shadow: 0 1px 2px rgba(18, 22, 43, .04), 0 26px 40px -22px rgba(18, 22, 43, .38); }
+.lp3-line-inner .lp5-pic { position: relative; display: grid; place-items: center; width: 100%; height: 104px; overflow: hidden; border-radius: 16px; background: linear-gradient(135deg, var(--a), var(--b)); }
+.lp5-pic::before { content: ""; position: absolute; width: 120px; height: 120px; right: -34px; top: -40px; border-radius: 50%; background: rgba(255, 255, 255, .22); }
+.lp5-pic::after { content: ""; position: absolute; width: 90px; height: 90px; left: -30px; bottom: -44px; border-radius: 50%; background: rgba(255, 255, 255, .16); }
+.lp5-ico { position: relative; z-index: 1; width: 52px; height: 52px; color: #fff; filter: drop-shadow(0 6px 10px rgba(18, 22, 43, .28)); }
+.lp3-line-inner .lp5-card b { display: block; margin-top: 10px; padding: 0 6px; font-family: 'Inter', 'DM Sans', sans-serif; font-size: .98rem; font-weight: 700; letter-spacing: -0.01em; color: #12162b; white-space: nowrap; }
+.dark .lp3-line-inner span.lp5-card { background: #121a38; border-color: #1f2a52; }
+.dark .lp3-line-inner .lp5-card b { color: #f1f4ff; }
+.lp3-strip { padding-bottom: 36px; }
+
+/* shop types as a grid of rounded cards, each with a small coloured letter tile */
+.lp6-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+@media (min-width: 640px) { .lp6-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 960px) { .lp6-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.lp6-card { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 26px 18px; background: #fff; border: 1px solid #e6e9f2; border-radius: 22px; transition: transform .2s, box-shadow .2s, border-color .2s; }
+.lp6-card:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--a) 40%, #e6e9f2); box-shadow: 0 22px 36px -26px rgba(18, 22, 43, .35); }
+.lp6-card i { display: grid; place-items: center; flex: none; width: 54px; height: 54px; font-style: normal; font-size: 1.2rem; font-weight: 800; color: #fff; background: var(--a); border-radius: 14px; }
+.lp6-card b { font-family: 'DM Sans', sans-serif; font-size: 1.12rem; font-weight: 500; color: #12162b; }
+.dark .lp6-card { background: #121a38; border-color: #1f2a52; }
+.dark .lp6-card b { color: #f1f4ff; }
+.lp3-strip { padding-bottom: 44px; }
+.lp6-card i { background: linear-gradient(135deg, var(--a), var(--b, var(--a))); box-shadow: 0 10px 18px -10px color-mix(in srgb, var(--a) 80%, transparent); }
+.lp6-ico { width: 28px; height: 28px; color: #fff; filter: drop-shadow(0 2px 3px rgba(18, 22, 43, .25)); }
+
+/* shop type cards are buttons: hover and click give a blue box */
+.lp6-card { position: relative; font: inherit; cursor: pointer; text-align: left; }
+.lp6-card:hover { border-color: #2a4ad8; box-shadow: 0 22px 36px -26px rgba(42, 74, 216, .55); }
+.lp6-card.is-picked { border-color: #2a4ad8; background: #eef2ff; box-shadow: 0 0 0 3px rgba(42, 74, 216, .18), 0 22px 36px -24px rgba(42, 74, 216, .6); transform: translateY(-2px); }
+.lp6-card.is-picked b { color: #1e3a9a; }
+.lp6-card:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(42, 74, 216, .35); }
+.lp6-tick { position: absolute; top: 10px; right: 12px; display: grid; place-items: center; width: 22px; height: 22px; color: #fff; background: #2a4ad8; border-radius: 50%; transform: scale(0); transition: transform .2s cubic-bezier(.3, 1.6, .5, 1); }
+.lp6-card.is-picked .lp6-tick { transform: scale(1); }
+.dark .lp6-card.is-picked { background: #1a2550; border-color: #7ea2ff; }
+.dark .lp6-card.is-picked b { color: #fff; }
+.dark .lp6-card:hover { border-color: #7ea2ff; }
+.lp2-steps li:not(:last-child)::after, .dark .lp2-steps li:not(:last-child)::after { display: none !important; content: none; }
+
+/* How it works: finished cards with a step tag, a soft wash on top and a line that grows along the bottom */
+.lp2-steps { gap: 22px; }
+.lp2-steps li { position: relative; overflow: hidden; padding: 30px 28px 34px; border-radius: 26px; background:
+  radial-gradient(260px 150px at 0% 0%, rgba(42, 74, 216, .09), transparent 70%), #fff; }
+.lp2-steps li::before { content: ""; position: absolute; left: 0; bottom: 0; height: 4px; width: 0; background: linear-gradient(90deg, #2563eb, #7c5cf0); border-radius: 0 4px 0 0; transition: width .45s cubic-bezier(.2, .8, .2, 1); }
+.lp2-steps li:hover::before { width: 100%; }
+.lp2-step-dot { display: inline-flex !important; align-items: center; position: absolute; top: 24px; right: 24px; padding: 5px 12px; font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; line-height: 1; color: #1e3a9a !important; background: #eef2ff !important; border: 1px solid #dbe3ff !important; border-radius: 999px; box-shadow: none; width: auto; height: auto; }
+.lp2-step-dot::before { content: "Step "; margin-right: .35em; font-weight: 600; opacity: .7; }
+.lp2-step-icon { width: 56px; height: 56px; border-radius: 18px; }
+.lp2-steps h3 { margin-top: 26px; font-size: 1.28rem; letter-spacing: -0.015em; }
+.lp2-steps p { margin-top: 10px; font-size: .98rem; line-height: 1.65; }
+.dark .lp2-steps li { background: radial-gradient(260px 150px at 0% 0%, rgba(79, 109, 240, .2), transparent 70%), #121a38; }
+.dark .lp2-step-dot { color: #c7d2fe !important; background: #1f2a52 !important; border-color: #33437a !important; }
+
+/* menu: the current section is only coloured (no box, no dot) */
+.lp3-nav a.is-active, .dark .lp3-nav a.is-active { background: transparent !important; color: #2a4ad8; font-weight: 700; }
+.dark .lp3-nav a.is-active { color: #8aa0f6; }
+.lp3-nav a.is-active::after, .dark .lp3-nav a.is-active::after { display: none !important; content: none; }
+.lp3-nav a:hover { background: transparent; color: #2a4ad8; }
+.dark .lp3-nav a:hover { background: transparent; color: #8aa0f6; }

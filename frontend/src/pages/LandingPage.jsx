@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import BrandLogo from '../components/common/BrandLogo';
-import { MapPin, Globe, GlobeLock, MessageCircle, ArrowRight, Users, ShieldCheck, Smartphone, Sparkles, Zap, Store, CheckCheck, Play, Moon, Sun } from 'lucide-react';
+import { MapPin, Globe, GlobeLock, MessageCircle, ArrowRight, Users, ShieldCheck, Smartphone, Sparkles, Zap, Store, CheckCheck, Check, Play, Moon, Sun, UtensilsCrossed, Coffee, Scissors, Shirt, ShoppingCart, Pill, Croissant, Dumbbell, Wrench, BedDouble, Camera } from 'lucide-react';
 
 const STEPS = [
   { icon: MapPin, title: 'Pick a place', text: 'Type a town or use your location, choose how far to look, and pick the kind of shop.' },
@@ -26,7 +26,21 @@ const SAMPLE_SHOPS = [
   { name: 'Green Leaf Restaurant', meta: 'Restaurant · 380 m away', tag: 'Has a website', tone: 'green' },
 ];
 const DOT_COLORS = ['#2a4ad8', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#0ea5e9'];
-const CATEGORY_STRIP = ['Restaurants', 'Cafes', 'Salons', 'Clothing stores', 'Grocery stores', 'Pharmacies', 'Bakeries', 'Gyms', 'Auto repair', 'Hotels', 'Mobile shops', 'Photo studios'];
+// Each shop type is a picture card: a coloured tile with a large illustration icon, then its name
+const CATEGORY_STRIP = [
+  { name: 'Restaurants', icon: UtensilsCrossed, a: '#ff7a59', b: '#ffb36b' },
+  { name: 'Cafes', icon: Coffee, a: '#a8754a', b: '#d9a679' },
+  { name: 'Salons', icon: Scissors, a: '#ec4899', b: '#f9a8d4' },
+  { name: 'Clothing stores', icon: Shirt, a: '#8b5cf6', b: '#c4b5fd' },
+  { name: 'Grocery stores', icon: ShoppingCart, a: '#10b981', b: '#6ee7b7' },
+  { name: 'Pharmacies', icon: Pill, a: '#0ea5e9', b: '#7dd3fc' },
+  { name: 'Bakeries', icon: Croissant, a: '#f59e0b', b: '#fcd34d' },
+  { name: 'Gyms', icon: Dumbbell, a: '#2a4ad8', b: '#8aa0f6' },
+  { name: 'Auto repair', icon: Wrench, a: '#475569', b: '#94a3b8' },
+  { name: 'Hotels', icon: BedDouble, a: '#14b8a6', b: '#5eead4' },
+  { name: 'Mobile shops', icon: Smartphone, a: '#6366f1', b: '#a5b4fc' },
+  { name: 'Photo studios', icon: Camera, a: '#e11d48', b: '#fda4af' },
+];
 
 export default function LandingPage() {
   // The saved light/dark choice, switchable here with the moon / sun button (the same choice the app uses)
@@ -44,6 +58,7 @@ export default function LandingPage() {
   }, []);
   // Menu: glide to the section, replay its rise-in as you arrive, and highlight the section you are in
   const [activeSec, setActiveSec] = useState('');
+  const [pickedType, setPickedType] = useState('');   // the shop type card that was clicked (shown with a blue box)
   const goTo = (id) => (e) => {
     const target = document.getElementById(id);
     if (!target) return;
@@ -93,9 +108,9 @@ export default function LandingPage() {
             <BrandLogo size="lg" />
           </Link>
           <nav className="lp3-nav" aria-label="Page sections">
+            <a href="#strip" onClick={goTo('strip')} className={activeSec === 'strip' ? 'is-active' : ''}>Shop types</a>
             <a href="#how" onClick={goTo('how')} className={activeSec === 'how' ? 'is-active' : ''}>How it works</a>
             <a href="#features" onClick={goTo('features')} className={activeSec === 'features' ? 'is-active' : ''}>Features</a>
-            <a href="#strip" onClick={goTo('strip')} className={activeSec === 'strip' ? 'is-active' : ''}>Shop types</a>
           </nav>
           <div className="lp3-bar-cta">
             <button type="button" className="lp3-theme" onClick={() => setTheme((v) => (v === 'dark' ? 'light' : 'dark'))} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
@@ -132,10 +147,24 @@ export default function LandingPage() {
         {/* Scrolling strip of shop types */}
         <section id="strip" className="lp3-strip" aria-label="Kinds of shops you can find">
           <p>Find and reach shops of every kind</p>
-          <div className="lp3-line">
-            <div className="lp3-line-inner">
-              {[...CATEGORY_STRIP, ...CATEGORY_STRIP].map((c, i) => <span key={`${c}-${i}`}>{c}</span>)}
-            </div>
+          <div className="lp6-grid">
+            {CATEGORY_STRIP.map((c) => {
+              const Icon = c.icon;
+              return (
+                <button
+                  key={c.name}
+                  type="button"
+                  className={`lp6-card ${pickedType === c.name ? 'is-picked' : ''}`}
+                  style={{ '--a': c.a, '--b': c.b }}
+                  aria-pressed={pickedType === c.name}
+                  onClick={() => setPickedType(pickedType === c.name ? '' : c.name)}
+                >
+                  <i aria-hidden="true"><Icon className="lp6-ico" strokeWidth={1.8} /></i>
+                  <b>{c.name}</b>
+                  <em className="lp6-tick" aria-hidden="true"><Check className="h-3.5 w-3.5" strokeWidth={3.2} /></em>
+                </button>
+              );
+            })}
           </div>
         </section>
 
