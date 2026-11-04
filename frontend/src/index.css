@@ -1823,3 +1823,7 @@ html:not(.dark) .admin-light table tr:hover td { background-color: #fafbff; }
 /* the shared daily count sits at the top right of every admin page, and stays visible on small screens */
 .admin-count-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
 .admin-count-row .nav-count { display: inline-flex; }
+
+/* the whole heading line is blue, not just the highlighted words */
+h1:has(.hl), h1:has(.lp3-mark) { color: #2563eb !important; }
+.dark h1:has(.hl), .dark h1:has(.lp3-mark) { color: #8aaeff !important; }
