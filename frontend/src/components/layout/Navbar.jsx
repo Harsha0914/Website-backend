@@ -129,7 +129,7 @@ export default function Navbar({ quickAction = null }) {
               {quickAction.label}
             </button>
           )}
-          {isAuthenticated && dailyLimit.available && dailyLimit.limit > 0 && (
+          {isAuthenticated && user?.role === 'ADMIN' && dailyLimit.available && dailyLimit.limit > 0 && (
             <Link
               to={`/whatsapp?day=${todayIST()}&span=1`}
               className={`nav-count ${dailyLimit.reached ? 'is-full' : (dailyLimit.warnAt > 0 && dailyLimit.sentToday >= dailyLimit.warnAt) ? 'is-warn' : ''}`}

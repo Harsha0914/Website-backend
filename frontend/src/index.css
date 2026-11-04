@@ -1740,13 +1740,13 @@ html:not(.dark) .admin-light table tr:hover td { background-color: #fafbff; }
 
 /* heading: no highlighter band; the last words are blue-to-violet gradient text */
 .hl::after, .dark .hl::after { display: none !important; content: none; }
-.hl { background: linear-gradient(90deg, #2563eb 0%, #4f46e5 55%, #6d4be0 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; padding-right: .04em; }
-.dark .hl { background: linear-gradient(90deg, #7ea2ff 0%, #8f8bff 55%, #b79bff 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.hl { background: linear-gradient(90deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; padding-right: .04em; }
+.dark .hl { background: linear-gradient(90deg, #6f95ff 0%, #8aaeff 55%, #a5c0ff 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 
 /* landing heading: no lavender band; "need a website" is blue-to-violet gradient text */
 .lp3-mark::after, .dark .lp3-mark::after { display: none !important; content: none; }
-.lp3-mark { background: linear-gradient(90deg, #2563eb 0%, #4f46e5 55%, #6d4be0 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; padding-right: .05em; }
-.dark .lp3-mark { background: linear-gradient(90deg, #7ea2ff 0%, #8f8bff 55%, #b79bff 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.lp3-mark { background: linear-gradient(90deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; padding-right: .05em; }
+.dark .lp3-mark { background: linear-gradient(90deg, #6f95ff 0%, #8aaeff 55%, #a5c0ff 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 
 /* shop types as picture cards that drift slowly */
 .lp3-line-inner { gap: 16px; align-items: stretch; }
@@ -1819,3 +1819,7 @@ html:not(.dark) .admin-light table tr:hover td { background-color: #fafbff; }
 .nav-count.is-full { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
 .nav-count.is-full b { color: #b91c1c; } .nav-count.is-full .nav-count-dot { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, .2); }
 .dark .nav-count { color: #aab3d1; background: #121a38; border-color: #1f2a52; } .dark .nav-count b { color: #f1f4ff; }
+
+/* the shared daily count sits at the top right of every admin page, and stays visible on small screens */
+.admin-count-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.admin-count-row .nav-count { display: inline-flex; }
