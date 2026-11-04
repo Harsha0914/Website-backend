@@ -1844,3 +1844,7 @@ h1:has(.hl), h1:has(.lp3-mark) { color: #2563eb !important; }
 .dark .ui-nav-track { background: #12182f; border-color: #26325e; }
 .dark .ui-nav-track .ui-nav-link { color: #c4cbe6; }
 .dark .ui-nav-track .ui-nav-link:hover { background: rgba(79, 109, 240, .16); color: #fff; }
+
+/* the open page: a light blue pill with blue text */
+.ui-nav-track .ui-nav-link-active, .ui-nav-track .ui-nav-link-active:hover { color: #1e3a9a; background: #dfe7ff; border-color: #b9c8fb; box-shadow: 0 4px 12px -6px rgba(42, 74, 216, .35); }
+.dark .ui-nav-track .ui-nav-link-active, .dark .ui-nav-track .ui-nav-link-active:hover { color: #cfdbff; background: rgba(79, 109, 240, .28); border-color: #4f6df0; }
