@@ -1827,3 +1827,20 @@ html:not(.dark) .admin-light table tr:hover td { background-color: #fafbff; }
 /* the whole heading line is blue, not just the highlighted words */
 h1:has(.hl), h1:has(.lp3-mark) { color: #2563eb !important; }
 .dark h1:has(.hl), .dark h1:has(.lp3-mark) { color: #8aaeff !important; }
+
+/* ── Top menu: a dark rounded bar with text links and a glowing blue pill on the open page ───────────────── */
+.ui-nav-track { gap: 4px; padding: 5px; background: #0b1024; border: 1px solid #1f2a52; border-radius: 999px; box-shadow: 0 8px 22px -12px rgba(11, 16, 36, .6); }
+.ui-nav-track .ui-nav-pill { display: none; }
+.ui-nav-track .ui-nav-link svg { display: none; }
+.ui-nav-track .ui-nav-link { min-height: 36px; padding: 0 18px; border-radius: 999px; border: 1px solid transparent; color: #c4cbe6; font-size: .9rem; font-weight: 600; letter-spacing: .01em; }
+.ui-nav-track .ui-nav-link:hover { background: rgba(79, 109, 240, .14); color: #fff; }
+.ui-nav-track .ui-nav-link-active, .ui-nav-track .ui-nav-link-active:hover { color: #fff; font-weight: 700; background: radial-gradient(120% 140% at 50% 0%, rgba(79, 109, 240, .55), rgba(31, 59, 184, .5)); border-color: #4f6df0; box-shadow: 0 0 0 1px rgba(79, 109, 240, .25), 0 0 18px rgba(79, 109, 240, .55), inset 0 0 12px rgba(127, 149, 245, .25); }
+
+/* menu bar: white background, dark text, the open page keeps the blue pill */
+.ui-nav-track { background: #ffffff; border-color: #e6e9f2; box-shadow: 0 6px 18px -12px rgba(18, 22, 43, .25); }
+.ui-nav-track .ui-nav-link { color: #4b5470; }
+.ui-nav-track .ui-nav-link:hover { background: #eef2ff; color: #1e3a9a; }
+.ui-nav-track .ui-nav-link-active, .ui-nav-track .ui-nav-link-active:hover { color: #fff; background: linear-gradient(180deg, #3b5be6, #2a4ad8); border-color: #2a4ad8; box-shadow: 0 6px 16px -6px rgba(42, 74, 216, .55); }
+.dark .ui-nav-track { background: #12182f; border-color: #26325e; }
+.dark .ui-nav-track .ui-nav-link { color: #c4cbe6; }
+.dark .ui-nav-track .ui-nav-link:hover { background: rgba(79, 109, 240, .16); color: #fff; }
