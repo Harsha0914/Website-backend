@@ -98,10 +98,10 @@ export const QUICK_PLACES = [
 const hasPhone = (b) => String(b?.phone || b?.phone_number || '').replace(/\D/g, '').length >= 8;
 
 const TAB_CONFIG = {
-  all:              { color: '#3b5be6', bg: '#ede9fe', label: 'All Shops' },
+  all:              { color: '#8b5cf6', bg: '#ede9fe', label: 'All Shops' },
   websites:         { color: '#10b981', bg: '#d1fae5', label: 'Website Available' },
   'no-websites':    { color: '#f43f5e', bg: '#ffe4e6', label: 'No Website' },
-  'good-websites':  { color: '#3b82f6', bg: '#dbeafe', label: 'Good Websites' },
+  'good-websites':  { color: '#a78bfa', bg: '#dbeafe', label: 'Good Websites' },
   'needs-improvement': { color: '#f59e0b', bg: '#fef3c7', label: 'Needs Improvement' },
 };
 

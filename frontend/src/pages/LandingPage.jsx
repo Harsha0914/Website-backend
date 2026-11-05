@@ -11,7 +11,7 @@ const STEPS = [
 
 // span = how many of the 6 grid columns the card takes on a wide screen (a mixed-size grid)
 const FEATURES = [
-  { icon: MapPin, tone: '#3b5be6', span: 4, title: 'Live Google Maps shops', text: 'Shop names, addresses, phone numbers and ratings come straight from Google Maps, so you always work with real, current shops.' },
+  { icon: MapPin, tone: '#8b5cf6', span: 4, title: 'Live Google Maps shops', text: 'Shop names, addresses, phone numbers and ratings come straight from Google Maps, so you always work with real, current shops.' },
   { icon: Globe, tone: '#10b981', span: 2, title: 'Website check', text: 'See at a glance if a shop has a website and how good it is.' },
   { icon: Users, tone: '#f59e0b', span: 2, title: 'Send to many, one by one', text: 'Pick 10, 20 or more shops and watch each message go out with its own status.' },
   { icon: MessageCircle, tone: '#0ea5e9', span: 4, title: 'All chats in one place', text: 'Every message you send and every reply you get, in a single clean inbox, kept safe and private to your account.' },
@@ -25,7 +25,7 @@ const SAMPLE_SHOPS = [
   { name: 'Style Boutique', meta: 'Clothing · 210 m away', tag: 'Messaged', tone: 'blue' },
   { name: 'Green Leaf Restaurant', meta: 'Restaurant · 380 m away', tag: 'Has a website', tone: 'green' },
 ];
-const DOT_COLORS = ['#2a4ad8', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#0ea5e9'];
+const DOT_COLORS = ['#7c4ddf', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#0ea5e9'];
 // Each shop type is a picture card: a coloured tile with a large illustration icon, then its name
 const CATEGORY_STRIP = [
   { name: 'Restaurants', icon: UtensilsCrossed, a: '#ff7a59', b: '#ffb36b' },
@@ -35,7 +35,7 @@ const CATEGORY_STRIP = [
   { name: 'Grocery stores', icon: ShoppingCart, a: '#10b981', b: '#6ee7b7' },
   { name: 'Pharmacies', icon: Pill, a: '#0ea5e9', b: '#7dd3fc' },
   { name: 'Bakeries', icon: Croissant, a: '#f59e0b', b: '#fcd34d' },
-  { name: 'Gyms', icon: Dumbbell, a: '#2a4ad8', b: '#8aa0f6' },
+  { name: 'Gyms', icon: Dumbbell, a: '#7c4ddf', b: '#b79bf8' },
   { name: 'Auto repair', icon: Wrench, a: '#475569', b: '#94a3b8' },
   { name: 'Hotels', icon: BedDouble, a: '#14b8a6', b: '#5eead4' },
   { name: 'Mobile shops', icon: Smartphone, a: '#6366f1', b: '#a5b4fc' },

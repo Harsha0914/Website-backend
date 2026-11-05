@@ -42,17 +42,17 @@ import api from '../../services/api';
 import { resolveKeywordToCategories } from '../../utils/searchMatcher';
 
 const CATEGORIES = [
-  { value: '', label: 'All Categories', icon: Store, color: '#3b5be6' },
+  { value: '', label: 'All Categories', icon: Store, color: '#8b5cf6' },
   { value: 'Grocery Store', label: 'Grocery Store', icon: ShoppingBag, color: '#10b981' },
   { value: 'Supermarket', label: 'Supermarket', icon: ShoppingBag, color: '#059669' },
   { value: 'General Store', label: 'General Store', icon: Store, color: '#8b5cf6' },
-  { value: 'Department Store', label: 'Department Store', icon: Building2, color: '#3b5be6' },
+  { value: 'Department Store', label: 'Department Store', icon: Building2, color: '#8b5cf6' },
   { value: 'Meat & Poultry', label: 'Meat & Poultry', icon: Store, color: '#e11d48' },
   { value: 'Pharmacy', label: 'Pharmacy', icon: Pill, color: '#ef4444' },
   { value: 'Bakery', label: 'Bakery', icon: Coffee, color: '#f59e0b' },
   { value: 'Clothing Store', label: 'Clothing Store', icon: Shirt, color: '#ec4899' },
   { value: 'Tailor', label: 'Tailor', icon: Scissors, color: '#d946ef' },
-  { value: 'Electronics Store', label: 'Electronics', icon: Cpu, color: '#3b82f6' },
+  { value: 'Electronics Store', label: 'Electronics', icon: Cpu, color: '#a78bfa' },
   { value: 'Mobile Phones', label: 'Mobile Phones', icon: Smartphone, color: '#0284c7' },
   { value: 'Restaurant', label: 'Restaurant', icon: UtensilsCrossed, color: '#f97316' },
   { value: 'Cafe', label: 'Cafe', icon: Coffee, color: '#854d0e' },
@@ -65,7 +65,7 @@ const CATEGORIES = [
   { value: 'Book Store', label: 'Book Store', icon: BookOpen, color: '#8b5cf6' },
   { value: 'Furniture', label: 'Furniture', icon: Armchair, color: '#b45309' },
   { value: 'Pet Store', label: 'Pet Store', icon: Dog, color: '#10b981' },
-  { value: 'Shopping Mall', label: 'Shopping Mall', icon: Building2, color: '#3b82f6' },
+  { value: 'Shopping Mall', label: 'Shopping Mall', icon: Building2, color: '#a78bfa' },
 ];
 
 function SectionHead({ icon: Icon, title }) {
@@ -339,7 +339,7 @@ export default function UserDashboard() {
                         aria-pressed={active}
                         onClick={() => handleCategorySelect(c)}
                       >
-                        <span className="ui-tile-icon" style={{ background: `${c.color || '#3b5be6'}1f`, color: c.color || '#3b5be6' }}>
+                        <span className="ui-tile-icon" style={{ background: `${c.color || '#8b5cf6'}1f`, color: c.color || '#8b5cf6' }}>
                           <Icon className="h-4 w-4" aria-hidden="true" />
                         </span>
                         <span className="min-w-0 leading-tight">{c.label}</span>
@@ -390,7 +390,7 @@ export default function UserDashboard() {
                               className="finder-suggest-item"
                               onClick={() => { handleCategorySelect(c); setKeyword(''); }}
                             >
-                              <span className="finder-suggest-icon" style={{ background: `${c.color || '#3b5be6'}1f`, color: c.color || '#3b5be6' }}>
+                              <span className="finder-suggest-icon" style={{ background: `${c.color || '#8b5cf6'}1f`, color: c.color || '#8b5cf6' }}>
                                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                               </span>
                               {c.label}
